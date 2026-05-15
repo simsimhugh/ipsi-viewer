@@ -36,6 +36,7 @@ hakgun-viewer/
 - [데이터 소스](docs/03-data-sources.md)
 - [API 키 발급](docs/04-api-keys.md)
 - [구현 계획](docs/05-implementation-plan.md)
+- [핸드오프 (일시정지·재개)](docs/06-handoff.md)
 
 ## 라이선스
 

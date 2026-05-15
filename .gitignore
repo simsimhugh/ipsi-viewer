@@ -15,3 +15,5 @@ data/raw/
 firebase-debug.log
 dist/
 *.log
+.omc/
+.claude/
