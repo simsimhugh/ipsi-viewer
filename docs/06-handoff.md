@@ -7,7 +7,7 @@
 Claude Code는 대화 흐름·task list·컨텍스트를 `~/.claude/` 아래 디스크에 저장한다. 재부팅해도 사라지지 않는다.
 
 ```bash
-cd /home/hugh/hakgun-viewer
+cd /home/hugh/project/hakgun-viewer
 claude --continue          # 이 디렉토리의 최근 세션 이어가기
 # 또는
 claude --resume            # 여러 세션 중 골라서 이어가기
@@ -20,7 +20,7 @@ claude --resume            # 여러 세션 중 골라서 이어가기
 세션 데이터가 손상되거나 컨텍스트가 너무 길어 새로 시작하고 싶을 때.
 
 ```bash
-cd /home/hugh/hakgun-viewer
+cd /home/hugh/project/hakgun-viewer
 claude
 ```
 
@@ -35,12 +35,12 @@ claude
 ## 일시정지 절차 (체크리스트)
 
 1. 작업 중인 거 있으면 마무리하거나 중단점 명확히 함
-2. 변경된 파일 확인: `git -C /home/hugh/hakgun-viewer status`
+2. 변경된 파일 확인: `git -C /home/hugh/project/hakgun-viewer status`
 3. 의미 있는 변경이면 커밋·푸시:
    ```bash
-   git -C /home/hugh/hakgun-viewer add .
-   git -C /home/hugh/hakgun-viewer commit -m "wip: ..."
-   git -C /home/hugh/hakgun-viewer push
+   git -C /home/hugh/project/hakgun-viewer add .
+   git -C /home/hugh/project/hakgun-viewer commit -m "wip: ..."
+   git -C /home/hugh/project/hakgun-viewer push
    ```
 4. 컴 끄거나 터미널 닫기
 
@@ -48,7 +48,7 @@ claude
 
 | 항목 | 값 |
 |---|---|
-| 프로젝트 디렉토리 | `/home/hugh/hakgun-viewer` |
+| 프로젝트 디렉토리 | `/home/hugh/project/hakgun-viewer` |
 | GitHub | https://github.com/simsimhugh/hakgun-viewer (public) |
 | 브랜치 | main |
 | 호스트 OS | WSL2 Ubuntu 26.04 |

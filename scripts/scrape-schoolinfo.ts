@@ -1,210 +1,204 @@
 /**
  * #5 학교알리미 진학현황 Playwright 스크래퍼 PoC
  *
- * 성복중학교 단일 학교 대상 졸업생 진로 현황 데이터 추출.
- * SHL_IDF_CD=16eebf60-3c71-415a-bd10-1a1ad55b0094
+ * 성복중학교(SHL_IDF_CD=16eebf60-3c71-415a-bd10-1a1ad55b0094) 단일 학교 대상
+ * "졸업생의 진로 현황" 테이블 추출.
  *
- * 학교알리미 페이지는 JS 렌더링이라 Playwright(chromium) 필요.
- * 첫 실행: npx playwright install chromium
+ * 페이지 진입 → 공시기준년(2025) 선택 → "학생현황" 탭 클릭 →
+ * "졸업생의 진로 현황" 링크(loadGongSi) 클릭 → 로드된 테이블 캡처.
  *
- * 출력: data/samples/sungbok-career.json
+ * Ubuntu 26.04는 Playwright 공식 미지원이라 시스템 google-chrome-stable을 직접 사용한다.
+ * 사전: sudo apt-get install -y google-chrome-stable
  */
-import { chromium } from "playwright";
+import { chromium, type Frame } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const SUNGBOK_SHL_IDF = "16eebf60-3c71-415a-bd10-1a1ad55b0094";
-const SCHOOL_INFO_URL = `https://www.schoolinfo.go.kr/ei/ss/Pneiss_b01_s0.do?SHL_IDF_CD=${SUNGBOK_SHL_IDF}`;
+const ENTRY_URL = `https://www.schoolinfo.go.kr/ei/ss/Pneiss_b01_s0.do?SHL_IDF_CD=${SUNGBOK_SHL_IDF}`;
+const YEAR = process.env.YEAR ?? "2025";
+
+async function dumpFrames(frames: readonly Frame[]) {
+  for (let i = 0; i < frames.length; i++) {
+    console.log(`    frame[${i}] url=${frames[i].url().slice(0, 120)}`);
+  }
+}
 
 async function main() {
   await mkdir("data/samples", { recursive: true });
 
-  // Ubuntu 26.04는 Playwright 공식 미지원 — 시스템 Chrome을 직접 사용.
-  // docs/05-implementation-plan.md "환경 제약" 섹션 참고.
   const browser = await chromium.launch({
     headless: true,
     executablePath: "/usr/bin/google-chrome-stable",
   });
   const ctx = await browser.newContext({
-    userAgent:
-      "Mozilla/5.0 (Linux; school-admission-viewer-poc) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
     locale: "ko-KR",
+    userAgent:
+      "Mozilla/5.0 (Linux; school-admission-viewer-poc) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0 Safari/537.36",
   });
   const page = await ctx.newPage();
 
-  // 네트워크 요청 캡처 — AJAX 엔드포인트 발견용
-  const xhrLog: Array<{ url: string; method: string; status?: number }> = [];
+  // 진로 현황 응답 캡처 (Pneipp_b06_*가 핵심)
+  const xhrLog: Array<{ url: string; method: string; status: number; bytes: number; bodyFile?: string }> = [];
+  let careerBodyIdx = 0;
   page.on("response", async (res) => {
     const req = res.request();
-    if (req.resourceType() === "xhr" || req.resourceType() === "fetch") {
-      xhrLog.push({ url: req.url(), method: req.method(), status: res.status() });
+    if (req.resourceType() !== "xhr" && req.resourceType() !== "fetch" && req.resourceType() !== "document") {
+      return;
     }
+    const url = req.url();
+    const entry = { url, method: req.method(), status: res.status(), bytes: 0 } as (typeof xhrLog)[number];
+    try {
+      const body = await res.text();
+      entry.bytes = body.length;
+      if (/Pneipp_b06|loadGongSi|JG040|JG130|졸업|진로/.test(url) || (req.method() === "POST" && body.length > 0)) {
+        const file = `data/samples/career-resp-${String(careerBodyIdx).padStart(2, "0")}.html`;
+        await writeFile(file, body, "utf-8");
+        entry.bodyFile = file;
+        careerBodyIdx++;
+      }
+    } catch {
+      /* 일부 응답은 body 추출 실패 */
+    }
+    xhrLog.push(entry);
   });
 
-  console.log(`[1] 페이지 진입: ${SCHOOL_INFO_URL}`);
-  await page.goto(SCHOOL_INFO_URL, { waitUntil: "networkidle", timeout: 30_000 });
-  await page.waitForTimeout(5_000); // lazy-load 메뉴 대기
+  console.log(`[1] 페이지 진입: ${ENTRY_URL}`);
+  await page.goto(ENTRY_URL, { waitUntil: "networkidle", timeout: 30_000 });
+  await page.waitForTimeout(1_500);
 
-  // 페이지 타이틀과 보이는 메뉴 항목 dump (구조 파악용)
-  const title = await page.title();
-  console.log(`    title: ${title}`);
+  console.log(`[2] 공시기준년 = ${YEAR} (select + goSearForm submit)`);
+  // 페이지 진입 시점의 default 연도 확인
+  const defaultYear = await page.evaluate(() => (document.getElementById("gsYear") as HTMLSelectElement)?.value);
+  console.log(`    default gsYear = ${defaultYear}`);
 
-  // [DEBUG-1] 페이지 전체 텍스트에 "졸업" "진로" "진학" 검색
-  const bodyText = await page.locator("body").innerText();
-  for (const kw of ["졸업", "진로", "진학", "공시", "항목"]) {
-    const i = bodyText.indexOf(kw);
-    if (i >= 0) {
-      console.log(`    [DEBUG] "${kw}" 발견 @${i}: ${bodyText.slice(Math.max(0, i - 30), i + 40).replace(/\s+/g, " ")}`);
-    } else {
-      console.log(`    [DEBUG] "${kw}" 없음`);
-    }
+  if (defaultYear !== YEAR) {
+    // select 값을 바꾸고, 옆의 "선택" 버튼이 호출하는 goSearForm('gsYear')을 직접 발화 → form submit → 페이지 reload
+    await page.selectOption("#gsYear", YEAR);
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "networkidle", timeout: 30_000 }).catch(() => {}),
+      page.evaluate(() => (window as unknown as { goSearForm: (s: string) => void }).goSearForm("gsYear")),
+    ]);
+    await page.waitForTimeout(1_500);
+    const afterReloadYear = await page.evaluate(() => (document.getElementById("gsYear") as HTMLSelectElement)?.value);
+    console.log(`    reload 후 gsYear = ${afterReloadYear}`);
+  } else {
+    console.log(`    이미 ${YEAR} — reload 생략`);
   }
 
-  // [DEBUG-2] iframe enumerate
+  console.log("[3] '학생현황' 탭 클릭");
+  // 사용자 제보: <a data-tab-id="anynameyouwant3"> 학생현황
+  const studentTab = page.locator('a[data-tab-id="anynameyouwant3"]').first();
+  if (await studentTab.count()) {
+    console.log(`    data-tab-id 매칭 found, click`);
+    await studentTab.click();
+  } else {
+    console.warn("    data-tab-id 매칭 실패 — 텍스트로 fallback");
+    await page.locator('a:has-text("학생현황")').first().click();
+  }
+  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  await page.waitForTimeout(3_000);
+
+  // [DEBUG] 학생현황 탭 클릭 후 DOM 상태
+  const debugAfterStudentTab = await page.evaluate(() => {
+    const active = document.querySelector('a.pws_tab_active');
+    const allTabs = Array.from(document.querySelectorAll('a[data-tab-id]')).map((el) => ({
+      id: el.getAttribute('data-tab-id'),
+      text: (el.textContent || '').trim(),
+      classes: el.className,
+      ariaCurrent: el.getAttribute('aria-current'),
+    }));
+    const careerLinks = Array.from(document.querySelectorAll('a[onclick*="Pneipp_b06"], a[onclick*="진로"]'))
+      .map((el) => ({
+        text: (el.textContent || '').trim().slice(0, 50),
+        onclick: (el.getAttribute('onclick') || '').slice(0, 200),
+      }));
+    const bodyHas졸업 = document.body.innerText.includes('졸업');
+    const bodyHas진로 = document.body.innerText.includes('진로');
+    return { active: active?.textContent?.trim(), allTabs, careerLinks, bodyHas졸업, bodyHas진로 };
+  });
+  console.log(`    [DEBUG] active tab: ${debugAfterStudentTab.active}`);
+  console.log(`    [DEBUG] tabs:`, JSON.stringify(debugAfterStudentTab.allTabs));
+  console.log(`    [DEBUG] body에 "졸업"=${debugAfterStudentTab.bodyHas졸업}, "진로"=${debugAfterStudentTab.bodyHas진로}`);
+  console.log(`    [DEBUG] career link 후보: ${debugAfterStudentTab.careerLinks.length}건`);
+  for (const c of debugAfterStudentTab.careerLinks) {
+    console.log(`      "${c.text}" :: ${c.onclick}`);
+  }
+
+  console.log("[4] '졸업생의 진로 현황' 링크 클릭");
+  // 가장 명확한 선택자: onclick에 Pneipp_b06_s0p.do + 졸업생의 진로 현황
+  const link = page
+    .locator('a[onclick*="Pneipp_b06_s0p.do"][onclick*="졸업생의 진로 현황"]')
+    .first();
+  if ((await link.count()) === 0) {
+    console.warn("    onclick 매칭 실패 — 텍스트로 fallback");
+    const byText = page.getByText("졸업생의 진로 현황", { exact: false }).first();
+    if ((await byText.count()) === 0) {
+      console.error("    텍스트 매칭도 실패 — 페이지/XHR dump 후 종료");
+      await writeFile("data/samples/sungbok-after-student-tab.html", await page.content(), "utf-8");
+      await page.screenshot({ path: "data/samples/sungbok-after-student-tab.png", fullPage: true });
+      await writeFile("data/samples/sungbok-career-xhr.json", JSON.stringify(xhrLog, null, 2), "utf-8");
+      console.error(`    XHR 캡처 ${xhrLog.length}건 저장`);
+      await browser.close();
+      process.exit(2);
+    }
+    await byText.click({ timeout: 10_000 });
+  } else {
+    await link.click();
+  }
+  await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
+  await page.waitForTimeout(2_500);
+
+  console.log("[5] 결과 캡처");
+  // loadGongSi가 결과를 #gongsiInfo div에 채워 넣음
+  const gongsiInfoHtml = await page.locator("#gongsiInfo").innerHTML().catch(() => "");
+  console.log(`    #gongsiInfo bytes=${gongsiInfoHtml.length}`);
+  await writeFile("data/samples/sungbok-gongsi-info.html", gongsiInfoHtml, "utf-8");
+
   const frames = page.frames();
-  console.log(`    [DEBUG] frames: ${frames.length}`);
+  console.log(`    frames=${frames.length}`);
+  await dumpFrames(frames);
+
+  // #gongsiInfo 안의 table을 우선적으로 추출
+  const tableDumps: string[] = [];
+  const gongsiTableCount = await page.locator("#gongsiInfo table").count().catch(() => 0);
+  for (let j = 0; j < gongsiTableCount; j++) {
+    const html = await page.locator("#gongsiInfo table").nth(j).innerHTML().catch(() => "");
+    if (!html) continue;
+    tableDumps.push(`<!-- #gongsiInfo table[${j}] -->\n<table>${html}</table>`);
+  }
+  console.log(`    #gongsiInfo tables=${gongsiTableCount}`);
+
+  // 그 외 frame의 table들 (fallback)
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
-    console.log(`      frame[${i}] url=${f.url().slice(0, 80)}`);
-  }
-
-  // [DEBUG-3] 클릭 가능한 요소(링크·버튼·li[onclick]) 한 페이지에 몇 개 있는지 + 텍스트 dump
-  const clickables = await page.evaluate(() => {
-    const out: Array<{ tag: string; text: string; href: string; onclick: string }> = [];
-    document.querySelectorAll("a[href], button, li[onclick], div[onclick], span[onclick]").forEach((el) => {
-      const text = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 40);
-      if (!text) return;
-      out.push({
-        tag: el.tagName,
-        text,
-        href: (el as HTMLAnchorElement).href || "",
-        onclick: (el.getAttribute("onclick") || "").slice(0, 80),
-      });
-    });
-    return out;
-  });
-  console.log(`    [DEBUG] clickable: ${clickables.length}`);
-  await writeFile("data/samples/sungbok-clickables.json", JSON.stringify(clickables, null, 2), "utf-8");
-  console.log("    → data/samples/sungbok-clickables.json");
-  // 그 중 "졸업/진로/진학/공시" 포함 항목만
-  const relevant = clickables.filter((c) => /(졸업|진로|진학|공시|항목별)/.test(c.text));
-  console.log(`    [DEBUG] relevant clickables: ${relevant.length}`);
-  for (const r of relevant) console.log(`      ${r.tag} "${r.text}" href=${r.href.slice(0, 60)} onclick=${r.onclick}`);
-
-  // [1.5] 카테고리 탭 4개를 모두 클릭해 lazy-load된 항목 노출
-  console.log("\n[1.5] 카테고리 탭 4개 클릭");
-  for (const tab of ["교육활동", "교육여건", "학생현황", "학업성취사항"]) {
-    const t = page.locator(`a:has-text("${tab}")`).first();
-    if ((await t.count()) > 0) {
-      await t.click().catch(() => {});
-      await page.waitForTimeout(800);
-      console.log(`    클릭: ${tab}`);
-    } else {
-      console.log(`    못찾음: ${tab}`);
+    if (f === page.mainFrame()) continue;
+    const count = await f.locator("table").count().catch(() => 0);
+    for (let j = 0; j < count; j++) {
+      const html = await f.locator("table").nth(j).innerHTML().catch(() => "");
+      if (!html) continue;
+      tableDumps.push(`<!-- frame[${i}] table[${j}] url=${f.url()} -->\n<table>${html}</table>`);
     }
   }
-  await page.waitForTimeout(2_000);
+  console.log(`    total table dumps=${tableDumps.length}`);
+  await writeFile(
+    "data/samples/sungbok-career-tables.html",
+    tableDumps.join("\n\n"),
+    "utf-8",
+  );
 
-  // [1.6] 탭 클릭 후 다시 진로/졸업/진학 키워드 검색
-  const bodyText2 = await page.locator("body").innerText();
-  for (const kw of ["졸업", "진로", "진학"]) {
-    const i = bodyText2.indexOf(kw);
-    if (i >= 0) {
-      console.log(`    [AFTER-TABS] "${kw}" @${i}: ${bodyText2.slice(Math.max(0, i - 20), i + 60).replace(/\s+/g, " ")}`);
-    } else {
-      console.log(`    [AFTER-TABS] "${kw}" 없음`);
-    }
-  }
+  // 전체 HTML 보존 (다음 파싱 단계용)
+  await writeFile("data/samples/sungbok-career-full.html", await page.content(), "utf-8");
+  await page.screenshot({ path: "data/samples/sungbok-career.png", fullPage: true });
 
-  // [1.7] 진로 관련 onclick/text 가진 모든 요소 dump
-  const relevant2 = await page.evaluate(() => {
-    const out: Array<{ text: string; onclick: string }> = [];
-    document.querySelectorAll("a, button, li, span").forEach((el) => {
-      const text = (el.textContent || "").trim().replace(/\s+/g, " ");
-      const onclick = el.getAttribute("onclick") || "";
-      if (/(졸업|진로|진학)/.test(text + onclick) && text.length < 80) {
-        out.push({ text: text.slice(0, 60), onclick: onclick.slice(0, 200) });
-      }
-    });
-    return out;
-  });
-  console.log(`    [AFTER-TABS] 진로 관련 요소: ${relevant2.length}`);
-  for (const r of relevant2) console.log(`      "${r.text}" :: ${r.onclick}`);
-  await writeFile("data/samples/sungbok-after-tabs.json", JSON.stringify(relevant2, null, 2), "utf-8");
-
-  // 좌측/상단 메뉴에서 "졸업생" 또는 "진로" 텍스트를 가진 클릭 가능 요소 찾기
-  const candidates = await page
-    .locator('a, button, li, span:has-text("졸업생"), span:has-text("진로"), span:has-text("진학")')
-    .all();
-
-  console.log(`[2] 진로/진학 관련 후보 ${candidates.length}건`);
-  const visibleLabels: string[] = [];
-  for (const el of candidates) {
-    try {
-      const text = (await el.textContent())?.trim();
-      if (!text) continue;
-      if (/(졸업생|진로|진학)/.test(text) && text.length < 50) {
-        const visible = await el.isVisible().catch(() => false);
-        if (visible) visibleLabels.push(text);
-      }
-    } catch {}
-  }
-  const uniqLabels = [...new Set(visibleLabels)];
-  console.log("    표시 라벨:", uniqLabels);
-
-  // 졸업생 진로 현황 항목 클릭 시도 (텍스트 매칭)
-  console.log("[3] '졸업생의 진로 현황' 클릭 시도");
-  let clicked = false;
-  for (const text of [
-    "졸업생의 진로 현황",
-    "졸업생의 진로현황",
-    "졸업생 진로 현황",
-    "졸업생 진로현황",
-  ]) {
-    const target = page.getByText(text, { exact: false }).first();
-    if (await target.count()) {
-      try {
-        await target.click({ timeout: 5000 });
-        clicked = true;
-        console.log(`    클릭: "${text}"`);
-        break;
-      } catch (e) {
-        console.log(`    실패: "${text}" — ${(e as Error).message}`);
-      }
-    }
-  }
-
-  if (clicked) {
-    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
-    // 데이터 영역(table) HTML 캡처
-    const tables = await page.locator("table").all();
-    console.log(`[4] 페이지 내 table ${tables.length}개`);
-    const tableHtml: string[] = [];
-    for (let i = 0; i < tables.length; i++) {
-      const html = await tables[i].innerHTML().catch(() => "");
-      tableHtml.push(html);
-    }
-    await writeFile("data/samples/sungbok-career-tables.html", tableHtml.join("\n\n<!-- ===== -->\n\n"), "utf-8");
-    console.log("    → data/samples/sungbok-career-tables.html");
-
-    // 스크린샷도 남김
-    await page.screenshot({ path: "data/samples/sungbok-career.png", fullPage: true });
-    console.log("    → data/samples/sungbok-career.png");
-  } else {
-    console.log("[4] 진로현황 항목 클릭 못함 — 페이지 구조 dump");
-    await page.screenshot({ path: "data/samples/sungbok-landing.png", fullPage: true });
-    const html = await page.content();
-    await writeFile("data/samples/sungbok-landing.html", html, "utf-8");
-    console.log("    → data/samples/sungbok-landing.{html,png}");
-  }
-
-  // XHR 로그 저장
-  await writeFile("data/samples/sungbok-xhr.json", JSON.stringify(xhrLog, null, 2), "utf-8");
-  console.log(`[5] XHR ${xhrLog.length}건 → data/samples/sungbok-xhr.json`);
+  await writeFile("data/samples/sungbok-career-xhr.json", JSON.stringify(xhrLog, null, 2), "utf-8");
+  console.log(`[6] XHR ${xhrLog.length}건 → sungbok-career-xhr.json`);
+  console.log("    저장된 응답 body: data/samples/career-resp-*.html");
+  console.log("    스크린샷: data/samples/sungbok-career.png");
 
   await browser.close();
 }
 
-main().catch(async (err) => {
-  console.error("❌ 실패:", err);
+main().catch((err) => {
+  console.error("실패:", err);
   process.exit(1);
 });
