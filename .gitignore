@@ -1,0 +1,17 @@
+node_modules/
+data/*.json
+data/*.geojson
+data/*.shp
+data/*.shx
+data/*.dbf
+data/*.prj
+data/*.zip
+data/raw/
+!data/samples/
+.env
+.env.local
+.firebase/
+.firebaserc
+firebase-debug.log
+dist/
+*.log
