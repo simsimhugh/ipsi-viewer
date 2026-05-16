@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html, body {
+  @apply bg-slate-50 text-slate-900;
+  font-feature-settings: "tnum" 1; /* 숫자 폭 일정하게 — 표 정렬용 */
+}
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

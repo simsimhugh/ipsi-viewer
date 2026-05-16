@@ -26,12 +26,17 @@ interface MasterRecord {
   sidoName: string;
   sdSchulCode: string;
   kind: string;
+  address?: string;
+  sigungu?: string;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 interface CliArgs {
   inputPath: string;
   kinds: string[] | null;
   sidos: string[] | null;
+  sigungus: string[] | null;
   outJsonl: string | null;
   outShl: string | null;
 }
@@ -39,7 +44,7 @@ interface CliArgs {
 function parseCli(): CliArgs {
   const args = process.argv.slice(2);
   if (args.length < 1) {
-    console.error("사용법: tsx scripts/filter-master.ts <master.jsonl> [--kind 중학교] [--sido 서울,경기,인천] [--out filtered.jsonl] [--shl-only shls.txt]");
+    console.error("사용법: tsx scripts/filter-master.ts <master.jsonl> [--kind 중학교] [--sido 서울,경기,인천] [--sigungu 강남구,수지구] [--out filtered.jsonl] [--shl-only shls.txt]");
     process.exit(1);
   }
   const get = (flag: string) => {
@@ -51,6 +56,7 @@ function parseCli(): CliArgs {
     inputPath: args[0],
     kinds: csv(get("--kind")),
     sidos: csv(get("--sido")),
+    sigungus: csv(get("--sigungu")),
     outJsonl: get("--out"),
     outShl: get("--shl-only"),
   };
@@ -74,16 +80,30 @@ async function main() {
     filtered = filtered.filter(r => cli.sidos!.includes(r.sidoName) || cli.sidos!.includes(r.sidoCode));
     console.log(`[filter sido=${cli.sidos.join(",")}] → ${filtered.length}`);
   }
+  if (cli.sigungus) {
+    // sigungu 필드는 "용인시 수지구" 같이 공백 포함 가능 → 토큰별 포함 매칭
+    filtered = filtered.filter(r => {
+      const sg = r.sigungu ?? "";
+      return cli.sigungus!.some(target => sg.split(/\s+/).includes(target));
+    });
+    console.log(`[filter sigungu=${cli.sigungus.join(",")}] → ${filtered.length}`);
+  }
 
   // 분포
   const distSido = new Map<string, number>();
+  const distSigungu = new Map<string, number>();
   const distKind = new Map<string, number>();
   for (const r of filtered) {
     distSido.set(r.sidoName || "(unknown)", (distSido.get(r.sidoName) ?? 0) + 1);
+    if (r.sigungu) distSigungu.set(r.sigungu, (distSigungu.get(r.sigungu) ?? 0) + 1);
     distKind.set(r.kind, (distKind.get(r.kind) ?? 0) + 1);
   }
   console.log("\n시도별:");
   for (const [k, n] of [...distSido].sort((a, b) => b[1] - a[1])) console.log(`  ${k}: ${n}`);
+  if (distSigungu.size > 0 && distSigungu.size <= 30) {
+    console.log("시군구별:");
+    for (const [k, n] of [...distSigungu].sort((a, b) => b[1] - a[1])) console.log(`  ${k}: ${n}`);
+  }
   console.log("종류별:");
   for (const [k, n] of [...distKind].sort((a, b) => b[1] - a[1])) console.log(`  ${k}: ${n}`);
 

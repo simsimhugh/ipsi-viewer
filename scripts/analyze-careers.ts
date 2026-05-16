@@ -31,6 +31,10 @@ interface SchoolRecord {
   SHL_IDF_CD: string;
   schoolName: string;
   sidoName: string;
+  sigungu?: string;
+  address?: string;
+  lat?: number | null;
+  lng?: number | null;
   kind: string;
   career: null | {
     year: number;
@@ -57,37 +61,47 @@ async function main() {
   const sort = get("--sort") ?? "elite";
   const topN = Number(get("--top") ?? 20);
   const sidoFilter = get("--sido")?.split(",").map(s => s.trim());
+  const sigunguFilter = get("--sigungu")?.split(",").map(s => s.trim());
 
   const raw = await readFile(inputPath, "utf-8");
   let records: SchoolRecord[] = raw.split("\n").filter(s => s.trim()).map(l => JSON.parse(l));
   const beforeFilter = records.length;
   records = records.filter(r => r.career != null);
   if (sidoFilter) records = records.filter(r => sidoFilter.includes(r.sidoName));
-  console.log(`[input] ${beforeFilter}건 → 진로 있는 ${records.length}건${sidoFilter ? ` (지역: ${sidoFilter.join(",")})` : ""}`);
+  if (sigunguFilter) records = records.filter(r => {
+    const sg = r.sigungu ?? "";
+    return sigunguFilter.some(t => sg.split(/\s+/).includes(t));
+  });
+  const filterLabel = [
+    sidoFilter && `지역: ${sidoFilter.join(",")}`,
+    sigunguFilter && `시군구: ${sigunguFilter.join(",")}`,
+  ].filter(Boolean).join(", ");
+  console.log(`[input] ${beforeFilter}건 → 진로 있는 ${records.length}건${filterLabel ? ` (${filterLabel})` : ""}`);
 
   records.sort((a, b) => {
     const ta = a.career!.total, tb = b.career!.total;
     let va: number, vb: number;
     if (sort === "elite") { va = elitePct(ta); vb = elitePct(tb); }
-    else { va = (ta as Record<string, number>)[sort] ?? 0; vb = (tb as Record<string, number>)[sort] ?? 0; }
+    else { va = (ta as unknown as Record<string, number>)[sort] ?? 0; vb = (tb as unknown as Record<string, number>)[sort] ?? 0; }
     return vb - va;
   });
 
   const top = records.slice(0, topN);
   console.log(`\n[상위 ${topN}교 — 정렬: ${sort}]`);
   console.log(
-    padK("학교명", 22) + padK("지역", 6) + padK("졸업", 6) +
+    padK("학교명", 22) + padK("지역", 16) + padK("졸업", 6) +
     padK("일반", 6) + padK("과학", 6) + padK("외고", 6) +
     padK("자사", 6) + padK("자공", 6) + padK("특목+자사", 12) + "엘리트%",
   );
-  console.log("─".repeat(80));
+  console.log("─".repeat(90));
   for (const r of top) {
     const t = r.career!.total;
     const elite = eliteCount(t);
     const pct = elitePct(t).toFixed(1);
+    const loc = r.sigungu ? `${r.sidoName} ${r.sigungu}` : r.sidoName;
     console.log(
       padK(r.schoolName, 22) +
-      padK(r.sidoName, 6) +
+      padK(loc, 16) +
       padK(String(t.graduates), 6) +
       padK(String(t.generalHigh), 6) +
       padK(String(t.scienceHigh), 6) +

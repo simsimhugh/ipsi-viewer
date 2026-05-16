@@ -51,6 +51,22 @@ interface SchoolMaster {
   sidoName: string;
   sdSchulCode: string;
   kind: ReturnType<typeof classifyKind>;
+  address: string;     // 도로명 주소 전체 (예: "경기도 용인시 수지구 성복2로78번길 51")
+  sigungu: string;     // 시군구 (예: "용인시 수지구", "강남구", "평창군")
+  lat: number | null;  // 위도
+  lng: number | null;  // 경도
+}
+
+/** 도로명 주소에서 시군구 추출 — "시/군/구"로 끝나는 연속 토큰 (시도 다음부터). */
+function extractSigungu(address: string): string {
+  if (!address) return "";
+  const tokens = address.trim().split(/\s+/);
+  const out: string[] = [];
+  for (const t of tokens.slice(1)) {
+    if (/(시|군|구)$/.test(t)) out.push(t);
+    else break;
+  }
+  return out.join(" ");
 }
 
 /** sitemapindex.xml에서 school_main_*.xml URL들을 동적으로 발견. */
@@ -86,6 +102,21 @@ async function fetchSchoolInfo(SHL: string): Promise<SchoolMaster> {
   const sidoCode = lctnMatch?.[1] ?? "";
   const sidoName = SIDO_NAMES[sidoCode] ?? "";
 
+  // 주소: <meta name="description" content="...주소 : <ADDR>, ..."/> — 가장 안정적
+  const metaDescMatch = html.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/);
+  let address = "";
+  if (metaDescMatch) {
+    const m = metaDescMatch[1].match(/주소\s*:\s*([^,]+)/);
+    if (m) address = m[1].trim();
+  }
+  const sigungu = extractSigungu(address);
+
+  // 좌표: var lat = "37.319..."; var lng = "127.076...";
+  const latMatch = html.match(/var\s+lat\s*=\s*["']([0-9.\-]+)["']/);
+  const lngMatch = html.match(/var\s+lng\s*=\s*["']([0-9.\-]+)["']/);
+  const lat = latMatch ? parseFloat(latMatch[1]) : null;
+  const lng = lngMatch ? parseFloat(lngMatch[1]) : null;
+
   return {
     SHL_IDF_CD: SHL,
     schoolName,
@@ -93,6 +124,10 @@ async function fetchSchoolInfo(SHL: string): Promise<SchoolMaster> {
     sidoName,
     sdSchulCode,
     kind: classifyKind(schoolName),
+    address,
+    sigungu,
+    lat,
+    lng,
   };
 }
 
