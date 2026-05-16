@@ -47,15 +47,21 @@ function parseCli(): CliArgs {
   };
 }
 
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-const jitter = () => 300 + Math.random() * 500; // 300~800ms
+export const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+export const jitter = () => 300 + Math.random() * 500; // 300~800ms
 
-async function withRetry<T>(fn: () => Promise<T>, label: string, max = 5): Promise<T> {
+/** 지수 backoff 재시도. `skipPredicate`가 true면 즉시 throw (재시도 안 함). */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  opts: { max?: number; skipPredicate?: (e: unknown) => boolean } = {},
+): Promise<T> {
+  const max = opts.max ?? 5;
   let delay = 1000;
   for (let i = 0; i < max; i++) {
     try { return await fn(); }
     catch (e) {
-      if (e instanceof NoCareerDataError) throw e; // skip, no retry
+      if (opts.skipPredicate?.(e)) throw e;
       if (i === max - 1) throw e;
       console.warn(`  ! ${label} 실패 (${(e as Error).message}) — ${delay}ms 후 재시도 ${i+1}/${max}`);
       await sleep(delay);
@@ -66,7 +72,7 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, max = 5): Promi
 }
 
 /** 워커 N개로 items 큐를 소비. 각 워커는 끝낼 때까지 다음 item을 가져감. */
-async function runWithLimit<T>(items: T[], limit: number, worker: (item: T, idx: number) => Promise<void>) {
+export async function runWithLimit<T>(items: T[], limit: number, worker: (item: T, idx: number) => Promise<void>) {
   let index = 0;
   async function lane() {
     while (true) {
@@ -97,6 +103,7 @@ async function main() {
       const { html, schoolName } = await withRetry(
         () => fetchCareer(SHL, { year: cli.year }),
         tag,
+        { skipPredicate: (e) => e instanceof NoCareerDataError },
       );
       const parsed = parseCareerHtml(html, { schoolName, year: Number(cli.year) });
       const record = { SHL_IDF_CD: SHL, schoolName, year: Number(cli.year), data: parsed };
@@ -123,4 +130,7 @@ async function main() {
   console.log(`출력: ${cli.outPath}`);
 }
 
-main().catch((err) => { console.error("실패:", err); process.exit(1); });
+// CLI 진입점 — 직접 실행 시만 (import 시에는 skip)
+if (process.argv[1]?.endsWith("/batch-fetch.ts")) {
+  main().catch((err) => { console.error("실패:", err); process.exit(1); });
+}
