@@ -2,24 +2,28 @@
  * 데이터 로딩 layer — 현재는 정적 JSONL 파일 (`data/schools-with-career.jsonl`).
  * 향후 Firestore로 옮길 때 이 파일의 함수 시그니처만 유지하면 page는 변경 불필요.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { School } from "./types";
 
-const JSONL_PATH = path.join(process.cwd(), "data", "schools-with-career.jsonl");
+// 데이터는 repo 밖 — HAKGUN_DATA_DIR 환경변수로 지정 (.env.local에서). 비즈니스 보안.
+const DATA_DIR = process.env.HAKGUN_DATA_DIR
+  ?? path.join(process.env.HOME ?? "/home/hugh", "hakgun-data");
+const JSONL_PATH = path.join(DATA_DIR, "schools-with-career.jsonl");
 
-let _cache: School[] | null = null;
+let _cache: { mtimeMs: number; list: School[] } | null = null;
 
-/** 전체 학교 로딩 (한 번만 파싱 후 캐시). server-only. */
+/** 전체 학교 로딩 (파일 mtime 기반 캐시 무효화). server-only. */
 export async function loadAllSchools(): Promise<School[]> {
-  if (_cache) return _cache;
+  const st = await stat(JSONL_PATH);
+  if (_cache && _cache.mtimeMs === st.mtimeMs) return _cache.list;
   const raw = await readFile(JSONL_PATH, "utf-8");
   const list: School[] = raw
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean)
     .map((l) => JSON.parse(l) as School);
-  _cache = list;
+  _cache = { mtimeMs: st.mtimeMs, list };
   return list;
 }
 
