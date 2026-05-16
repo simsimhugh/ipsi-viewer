@@ -131,3 +131,69 @@ create policy "site_stats public read" on site_stats for select using (true);
 grant select  on site_stats             to anon, authenticated;
 grant all     on site_stats, unique_visitors to service_role;
 grant execute on function record_visit  to anon, authenticated, service_role;
+
+-- ─── 부동산 트랙 ──────────────────────────────────────────────────────────
+-- 학구 (school district polygon — SHP→GeoJSON 변환 결과)
+create table if not exists school_districts (
+  id          bigserial primary key,
+  shl_idf_cd  text references schools(shl_idf_cd) on delete cascade,
+  geom        jsonb not null,
+  source      text,
+  updated_at  timestamptz not null default now()
+);
+create index if not exists school_districts_shl_idx on school_districts(shl_idf_cd);
+
+-- 아파트 단지 (카카오 지오코딩 + 공공데이터)
+create table if not exists apartments (
+  id            bigserial primary key,
+  name          text not null,
+  sigungu       text,
+  road_address  text,
+  lat           double precision,
+  lng           double precision,
+  built_year    int,
+  households    int,
+  source        text,
+  updated_at    timestamptz not null default now()
+);
+create index if not exists apartments_geo_idx on apartments(lat, lng);
+create index if not exists apartments_sigungu_idx on apartments(sigungu);
+
+-- 실거래가 (국토부)
+create table if not exists transactions (
+  id            bigserial primary key,
+  apt_id        bigint references apartments(id) on delete cascade,
+  area_m2       double precision,
+  price_won     bigint,
+  contract_date date,
+  floor         int,
+  source        text,
+  updated_at    timestamptz not null default now()
+);
+create index if not exists transactions_apt_idx on transactions(apt_id);
+create index if not exists transactions_date_idx on transactions(contract_date desc);
+
+-- 아파트 ↔ 중학교 매핑 (PIP 또는 반경 기반 결과)
+create table if not exists apartment_school_map (
+  apt_id      bigint references apartments(id) on delete cascade,
+  shl_idf_cd  text references schools(shl_idf_cd) on delete cascade,
+  distance_m  double precision,
+  in_district boolean,
+  source      text,
+  primary key (apt_id, shl_idf_cd)
+);
+create index if not exists asm_shl_idx on apartment_school_map(shl_idf_cd);
+
+-- RLS
+alter table school_districts       enable row level security;
+alter table apartments             enable row level security;
+alter table transactions           enable row level security;
+alter table apartment_school_map   enable row level security;
+
+create policy "school_districts public read"     on school_districts     for select using (true);
+create policy "apartments public read"           on apartments           for select using (true);
+create policy "transactions public read"         on transactions         for select using (true);
+create policy "apartment_school_map public read" on apartment_school_map for select using (true);
+
+grant select on school_districts, apartments, transactions, apartment_school_map to anon, authenticated;
+grant all    on school_districts, apartments, transactions, apartment_school_map to service_role;

@@ -1,14 +1,19 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { loadSchool } from "@/lib/data";
+import { loadApartmentsForSchool } from "@/lib/realestate";
 import SchoolDetailView from "@/components/SchoolDetailView";
+import SchoolApartments from "@/components/SchoolApartments";
 
 // SSG 미사용 — 데이터 파일이 build 시점에 없을 수 있음 (CI 환경)
 export const dynamic = "force-dynamic";
 
 export default async function SchoolPage({ params }: { params: { shl: string } }) {
   const SHL = decodeURIComponent(params.shl);
-  const school = await loadSchool(SHL);
+  const [school, apartments] = await Promise.all([
+    loadSchool(SHL),
+    loadApartmentsForSchool(SHL),
+  ]);
   if (!school) notFound();
 
   return (
@@ -46,6 +51,7 @@ export default async function SchoolPage({ params }: { params: { shl: string } }
       </header>
 
       <SchoolDetailView school={school} />
+      <SchoolApartments apartments={apartments} />
     </div>
   );
 }

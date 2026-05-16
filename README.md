@@ -67,6 +67,26 @@ npm run check:data       # ~/hakgun-data 풀 검증
 npm run check:data:fixture  # data/fixtures 검증
 ```
 
+## 부동산 트랙 (MVP, 자원 대기)
+
+| Script | 자원 | 상태 |
+|---|---|---|
+| `npm run shp:to-geojson`     | 학구도 SHP (schoolzone.emac.kr) | placeholder, SHP 도착 시 동작 |
+| `npm run geocode:kakao`      | `KAKAO_REST_API_KEY` | placeholder, 키 도착 시 동작 |
+| `npm run fetch:transactions` | `PUBLIC_DATA_API_KEY` (data.go.kr) | placeholder, 키 도착 시 동작 |
+| `npm run map:apartments`     | 위 3종 (radius mode는 카카오 좌표만으로 가능) | placeholder, 자료 도착 시 동작 |
+
+Supabase 추가 테이블: `school_districts`, `apartments`, `transactions`, `apartment_school_map`.
+스키마는 `supabase/schema.sql`에 추가됨. Supabase Dashboard → SQL Editor에 적용 필요.
+
+학교 상세 페이지에 "학구 내 아파트 단지" 섹션이 추가되어 있고, 데이터가 없으면 안내 placeholder를 표시한다.
+
+자료 도착 후 follow-up PR 예정:
+- SHP 받으면: `shp:to-geojson` + `import-districts` 작성·실행 → `school_districts` 적재
+- 카카오 키: 아파트 주소 → 좌표 보강
+- 공공데이터 키: 시·군·구별 아파트 매매 fetch → `apartments`/`transactions` 적재
+- 마지막: `npm run map:apartments --mode pip` (또는 `--mode radius --km 1`)로 `apartment_school_map` 적재.
+
 ## 문서
 
 - [요구사항](docs/01-requirements.md) · [아키텍처](docs/02-architecture.md) · [데이터 소스](docs/03-data-sources.md)
