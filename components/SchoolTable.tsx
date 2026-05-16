@@ -229,6 +229,43 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
         </button>
       </div>
 
+      {/* 활성 시·구 칩 요약 (선택한 칩 한눈에) */}
+      {((state.chipFilters.si?.length ?? 0) + (state.chipFilters.gu?.length ?? 0)) > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded border border-brand-200 bg-brand-50 px-2 py-1.5">
+          <span className="text-xs text-slate-500 mr-1">선택:</span>
+          {(state.chipFilters.si ?? []).map((v) => (
+            <button
+              key={`active-si-${v}`}
+              onClick={() => patch({ chipFilters: { ...state.chipFilters, si: (state.chipFilters.si ?? []).filter((x) => x !== v) } })}
+              className="text-xs px-2 py-0.5 rounded-full bg-white border border-brand-400 text-brand-800 hover:bg-brand-100 inline-flex items-center gap-1"
+              title="해제"
+            >
+              <span className="text-[10px] text-brand-500">시</span>
+              {v}
+              <span className="text-brand-400">×</span>
+            </button>
+          ))}
+          {(state.chipFilters.gu ?? []).map((v) => (
+            <button
+              key={`active-gu-${v}`}
+              onClick={() => patch({ chipFilters: { ...state.chipFilters, gu: (state.chipFilters.gu ?? []).filter((x) => x !== v) } })}
+              className="text-xs px-2 py-0.5 rounded-full bg-white border border-brand-400 text-brand-800 hover:bg-brand-100 inline-flex items-center gap-1"
+              title="해제"
+            >
+              <span className="text-[10px] text-brand-500">구</span>
+              {v}
+              <span className="text-brand-400">×</span>
+            </button>
+          ))}
+          <button
+            onClick={() => patch({ chipFilters: { ...state.chipFilters, si: [], gu: [] } })}
+            className="text-[10px] text-slate-500 hover:underline ml-1"
+          >
+            전체 해제
+          </button>
+        </div>
+      )}
+
       {/* 연도 칩 multi — 빈 선택 = 전체 합산 */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs text-slate-500 mr-1">연도:</span>
@@ -528,28 +565,36 @@ function ChipFilterBody({
         placeholder={col.key === "si" ? "검색: 수원, 강남, 분당…" : "검색: 영통, 분당, 수지…"}
         className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
       />
+      {selected.length > 0 && (
+        <div className="border-b border-slate-200 pb-2">
+          <div className="text-[10px] text-slate-500 mb-1">선택됨 ({selected.length})</div>
+          <div className="flex flex-wrap gap-1">
+            {selected.map((opt) => (
+              <button
+                key={`sel-${opt}`}
+                onClick={() => patch({ chipFilters: { ...state.chipFilters, [col.key]: selected.filter((x) => x !== opt) } })}
+                className="text-xs px-2 py-0.5 rounded-full border bg-brand-600 border-brand-600 text-white hover:bg-brand-700 inline-flex items-center gap-1"
+                title="해제"
+              >
+                {opt}
+                <span className="text-brand-200">×</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-1 max-h-56 overflow-y-auto p-0.5">
         {matched.length === 0 ? (
           <span className="text-xs text-slate-400 px-1">매치 없음</span>
-        ) : matched.map((opt) => {
-          const on = selected.includes(opt);
-          return (
-            <button
-              key={opt}
-              onClick={() => {
-                const next = on ? selected.filter((x) => x !== opt) : [...selected, opt];
-                patch({ chipFilters: { ...state.chipFilters, [col.key]: next } });
-              }}
-              className={`text-xs px-2 py-0.5 rounded-full border transition ${
-                on
-                  ? "bg-brand-600 border-brand-600 text-white"
-                  : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              {opt}
-            </button>
-          );
-        })}
+        ) : matched.filter((opt) => !selected.includes(opt)).map((opt) => (
+          <button
+            key={opt}
+            onClick={() => patch({ chipFilters: { ...state.chipFilters, [col.key]: [...selected, opt] } })}
+            className="text-xs px-2 py-0.5 rounded-full border bg-white border-slate-300 text-slate-700 hover:bg-slate-100 transition"
+          >
+            {opt}
+          </button>
+        ))}
       </div>
     </div>
   );

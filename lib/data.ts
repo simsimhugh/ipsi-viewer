@@ -20,17 +20,46 @@ const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_ANON);
 let _supabaseCache: { ts: number; list: School[] } | null = null;
 const SUPABASE_TTL = 5 * 60 * 1000; // 5분
 
+// PostgREST는 max-rows 1000 (Supabase 기본). 페이지네이션으로 전량 fetch.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAllRows<T>(sb: any, table: string): Promise<T[]> {
+  const PAGE = 1000;
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await sb.from(table).select("*").range(from, from + PAGE - 1);
+    if (error) throw new Error(`${table} fetch (range ${from}~${from + PAGE - 1}): ${error.message}`);
+    if (!data || data.length === 0) break;
+    all.push(...(data as T[]));
+    if (data.length < PAGE) break;
+  }
+  return all;
+}
+
 async function loadFromSupabase(): Promise<School[]> {
   if (_supabaseCache && Date.now() - _supabaseCache.ts < SUPABASE_TTL) {
     return _supabaseCache.list;
   }
   const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!, { auth: { persistSession: false } });
-  const [{ data: schools, error: se }, { data: careers, error: ce }] = await Promise.all([
-    sb.from("schools").select("*").range(0, 50000),
-    sb.from("careers").select("*").range(0, 50000),
+  type SchoolRow = {
+    shl_idf_cd: string; school_name: string; sido_code: string; sido_name: string;
+    sd_schul_code: string | null; kind: School["kind"];
+    address: string | null; sigungu: string | null;
+    si: string | null; gu: string | null;
+    lat: number | null; lng: number | null;
+  };
+  type CareerRowSB = {
+    shl_idf_cd: string; year: number;
+    graduates: number; general_high: number; vocational_high: number;
+    science_high: number; foreign_intl_high: number; arts_sports_high: number; meister_high: number;
+    special_purpose_subtotal: number; private_autonomous: number; public_autonomous: number;
+    autonomous_subtotal: number; other: number; advanced_total: number;
+    employed: number; alt_education: number; unemployed: number;
+    male: CareerRow | null; female: CareerRow | null; rate_pct: CareerRow | null;
+  };
+  const [schools, careers] = await Promise.all([
+    fetchAllRows<SchoolRow>(sb, "schools"),
+    fetchAllRows<CareerRowSB>(sb, "careers"),
   ]);
-  if (se) throw new Error(`schools fetch: ${se.message}`);
-  if (ce) throw new Error(`careers fetch: ${ce.message}`);
 
   // careers → careersByYear
   const cb: Record<string, Record<string, CareerData>> = {};
