@@ -1,61 +1,76 @@
 # hakgun-viewer
 
-수도권(서울/경기/인천) 중학교의 **고등학교 진학 결과**(특목·자사·영재·외고·과학·국제)와 **학구 내 아파트 단지**를 한눈에 비교·정렬·필터링할 수 있는 웹 서비스.
+전국 중학교의 **고등학교 진학 결과**(특목·자사·외고·국제·예체·자사·자공·일반·특성화·마이스터)와 **학구 내 아파트 단지**를 한눈에 비교·정렬·필터링할 수 있는 웹 서비스.
 
-학부모가 자녀 진학 시점에서 "어떤 중학교가 어떤 고교로 얼마나 보내는가", "그 중학교 학군에 들어가려면 어떤 아파트를 보면 되는가"를 한 화면에서 확인하는 것을 목표로 한다.
+학부모가 자녀 진학 시점에 "어떤 중학교가 어떤 고교로 얼마나 보내는가", "그 학군 안에 들어가려면 어떤 아파트를 보면 되는가"를 한 화면에서 확인하는 것이 목표.
 
 ## 기술 스택
 
-- 백엔드: Firebase Functions (Node.js / TypeScript) + Firestore + Cloud Scheduler
-- 프론트엔드: Firebase Studio 기반 Next.js + Firestore SDK + Firebase Hosting
-- 데이터 수집: 학교알리미 순수 HTTP 호출(0.24s/학교), 학구도 SHP, 국토부 실거래가 OpenAPI, Kakao Local API
-  - NEIS OpenAPI는 옵션(주소·교육청 보강용) — 학교알리미 sitemap이 마스터 대체 가능
+- 프론트엔드: **Next.js 14** (App Router) + Tailwind + Recharts
+- 백엔드/배포: **Vercel** (Hosting + Cron) + **Supabase** (PostgreSQL + RLS public read)
+- 데이터: **순수 HTTP**로 학교알리미 진로 수집(0.24s/학교), 학구도 SHP, 국토부 실거래가, Kakao Local API
+- 검증: Vitest + git pre-push hook + GitHub Actions CI + Branch protection
 
 ## 디렉토리 구조
 
 ```
 hakgun-viewer/
-├── docs/                 설계·요구사항 문서
-│   ├── 01-requirements.md
-│   ├── 02-architecture.md
-│   ├── 03-data-sources.md
-│   ├── 04-api-keys.md
-│   ├── 05-implementation-plan.md
-│   └── 06-handoff.md             # 일시정지·재개 가이드
-├── scripts/              데이터 수집·변환 스크립트 (TypeScript)
-│   ├── build-school-master.ts    # sitemap → 전국 학교 마스터 JSONL
-│   ├── filter-master.ts          # 마스터에서 중학교/수도권 등 필터
-│   ├── fetch-career.ts           # 학교 1교 진로 fetch (순수 HTTP)
-│   ├── batch-fetch.ts            # 학교 리스트 → 진로 JSONL (queue+jitter+backoff)
-│   ├── parse-career.ts           # 진로 HTML → 구조화된 JSON
-│   ├── join-careers.ts           # 마스터 + 진로 → 학교 단위 단일 JSONL
-│   ├── scrape-schoolinfo.ts      # (구) Playwright 스크래퍼 — reference
-│   ├── fetch-schools.ts          # (옵션) NEIS 보강용
-│   └── convert-districts.ts      # 학구도 SHP → GeoJSON 변환
-├── data/                 수집·변환 결과물 (gitignore, samples/만 공유)
-├── package.json
-└── tsconfig.json
+├── app/                      Next.js app router (page · school detail)
+├── components/               SchoolTable · SchoolDetailView · CareerChart
+├── lib/                      types, columnLabels (단일 소스), data (Supabase/JSONL 분기)
+├── scripts/                  데이터 수집·변환 (build-master, filter, fetch, batch, parse, join, analyze, check, import)
+├── supabase/                 schema.sql
+├── tests/                    Vitest 유닛 테스트
+├── data/fixtures/            CI 검증용 sample (5교 × 3년)
+├── .github/workflows/        ci.yml (typecheck·build·test·check) + weekly-sync.yml (KST 03:00 batch)
+├── docs/                     01~06 설계·요구사항·데이터·API키·구현·핸드오프
+└── package.json
 ```
 
-## 데이터 수집 파이프라인 (진로 트랙)
+실제 데이터는 **repo 밖 `~/hakgun-data/`** 에 보관 (env `HAKGUN_DATA_DIR`로 지정).
+
+## 데이터 파이프라인
 
 ```
-build-school-master           filter-master                 batch-fetch                  join-careers
-sitemap 10개  ────▶  school-master.jsonl  ───▶  middle-sudogwon.txt  ───▶  careers.jsonl  ───▶  schools-with-career.jsonl
-                     (전국 ~8000교)         (수도권 중학교 ~700교)      (진로 JSON)         (Firestore 적재 후보)
+build-school-master  ─▶  filter-master  ─▶  batch-fetch  ─▶  join-careers  ─▶  import-to-supabase
+sitemap 17개              kind/sido 필터     학교×연도 fetch    년도별 합본          Supabase upsert
+전국 ~13,000교 master                        9,911 record       3,322교 매칭        production DB
 ```
 
-학교당 0.24초 (순수 fetch), 워커 2~3 + 300~800ms jitter + 지수 backoff로 학교알리미 부하 최소.
-법적 검토(공공누리 제3유형, robots Allow, 자동수집 금지 없음) 는 `docs/03-data-sources.md` §1 참고.
+- 학교알리미 부하 최소화: 워커 3 + 300~800ms jitter + 지수 backoff + 졸업생 없는 학교 즉시 skip
+- 법적 검토(공공누리 제3유형, robots Allow): `docs/03-data-sources.md` §1
+- 데이터 무결성 100% (특목·자율·진학자 합산), 졸업자 13건(0.13%) 학교알리미 원본 미세 불일치
 
-## 문서 진입점
+## 개발
 
-- [요구사항](docs/01-requirements.md)
-- [아키텍처](docs/02-architecture.md)
-- [데이터 소스](docs/03-data-sources.md)
-- [API 키 발급](docs/04-api-keys.md)
-- [구현 계획](docs/05-implementation-plan.md)
-- [핸드오프 (일시정지·재개)](docs/06-handoff.md)
+```bash
+npm install
+npm run setup:hooks      # pre-push 자동 검증 설치 (vitest + check:data)
+npm run dev              # http://localhost:3000
+```
+
+데이터가 `~/hakgun-data/` 에 있을 때만 실제 화면 보임. 없으면 빈 페이지 (CI 환경 graceful).
+
+## 검증
+
+| Layer | 명령 | 검사 |
+|---|---|---|
+| 로컬 pre-push hook | 자동 | Vitest + 데이터 무결성 (풀) |
+| GitHub Actions CI | push/PR 자동 | typecheck + build + test + check:data (fixture) |
+| Branch Protection | enforce_admins=true | `ci` 통과 PR만 main 머지 가능 |
+
+수동 실행:
+```bash
+npm run test:run         # Vitest
+npm run typecheck        # TypeScript
+npm run check:data       # ~/hakgun-data 풀 검증
+npm run check:data:fixture  # data/fixtures 검증
+```
+
+## 문서
+
+- [요구사항](docs/01-requirements.md) · [아키텍처](docs/02-architecture.md) · [데이터 소스](docs/03-data-sources.md)
+- [API 키](docs/04-api-keys.md) · [구현 계획](docs/05-implementation-plan.md) · [핸드오프](docs/06-handoff.md)
 
 ## 라이선스
 

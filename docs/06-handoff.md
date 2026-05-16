@@ -1,149 +1,106 @@
 # 06. 핸드오프 — 일시정지 / 재개 가이드
 
-이 문서는 작업을 일시정지하고 컴 끄거나 며칠 후 다시 이어갈 때 사용한다. 두 가지 재개 경로가 있다.
-
-## A. 세션 그대로 이어가기 (가장 자연스러움)
-
-Claude Code는 대화 흐름·task list·컨텍스트를 `~/.claude/` 아래 디스크에 저장한다. 재부팅해도 사라지지 않는다.
+## 재개
 
 ```bash
 cd /home/hugh/project/hakgun-viewer
-claude --continue          # 이 디렉토리의 최근 세션 이어가기
+claude --continue        # 이 디렉토리 최근 세션 이어가기
 # 또는
-claude --resume            # 여러 세션 중 골라서 이어가기
+claude --resume          # 여러 세션 중 선택
 ```
 
-이러면 마지막에 했던 대화가 그대로 살아나고, in-progress 작업도 그대로 보임.
+대화·task list·상태가 디스크에 보존되어 재부팅해도 살아남습니다.
 
-## B. 새 세션 + 이 문서로 복원 (fallback)
-
-세션 데이터가 손상되거나 컨텍스트가 너무 길어 새로 시작하고 싶을 때.
-
+세션이 손상되거나 새로 시작하고 싶을 때:
 ```bash
-cd /home/hugh/project/hakgun-viewer
 claude
+# 첫 메시지: @docs/06-handoff.md 읽고 이어가자.
 ```
 
-첫 메시지로 다음을 입력:
-
-```
-@docs/06-handoff.md 읽고 이어가자.
-```
-
-새 세션 Claude가 이 문서를 보고 현재 상태와 다음 액션을 파악해 진행한다.
-
-## 일시정지 절차 (체크리스트)
-
-1. 작업 중인 거 있으면 마무리하거나 중단점 명확히 함
-2. 변경된 파일 확인: `git -C /home/hugh/project/hakgun-viewer status`
-3. 의미 있는 변경이면 커밋·푸시:
-   ```bash
-   git -C /home/hugh/project/hakgun-viewer add .
-   git -C /home/hugh/project/hakgun-viewer commit -m "wip: ..."
-   git -C /home/hugh/project/hakgun-viewer push
-   ```
-4. 컴 끄거나 터미널 닫기
-
-## 현재 상태 스냅샷 (작성 시점: 2026-05-16)
+## 현재 상태 스냅샷 (2026-05-17)
 
 | 항목 | 값 |
 |---|---|
 | 프로젝트 디렉토리 | `/home/hugh/project/hakgun-viewer` |
-| GitHub | https://github.com/simsimhugh/hakgun-viewer (public) |
-| 브랜치 | main |
-| 호스트 OS | WSL2 Ubuntu 26.04 |
-| Node | 24.15 |
-| Google Chrome (Playwright용) | 148 — `/usr/bin/google-chrome-stable` |
+| GitHub | https://github.com/simsimhugh/hakgun-viewer |
+| 브랜치 | main (branch protection: required `ci` + enforce_admins=true → PR 강제) |
+| 호스트 | WSL2 Ubuntu 26.04, Node 24.15 |
+| 데이터 위치 | `~/hakgun-data/` (repo 밖, 보안 분리) |
+| Local dev | `npm run dev` → http://localhost:3000 |
 
-## 완료된 작업
+## 완성된 트랙 (진학)
 
-- [x] 프로젝트 스캐폴드 (package.json·tsconfig·.gitignore)
-- [x] 설계 문서 5종 (`docs/01-requirements.md` ~ `docs/05-implementation-plan.md`)
-- [x] GitHub 리포 생성 + 첫 커밋 push
-- [x] Ubuntu 26.04 × Playwright 회피 — 시스템 Chrome 설치
-- [x] 학교알리미 페이지 구조 분석 (사용자 onclick 제보로 차단 해제):
-  - 학교 페이지 라우팅: `loadGongSi('/ei/pp/Pneipp_b{NN}_s0p.do', ...)`
-  - default JG_YEAR=**2026**(데이터 없음) → 학생현황 탭의 list3에 b06 미포함
-  - 2025로 form submit reload(`goSearForm('gsYear')`) 시 list3에 b06 포함됨
-  - 진로 현황 항목 정확한 onclick:  
-    `loadGongSi('/ei/pp/Pneipp_b06_s0p.do', '06', '13-다', '졸업생의 진로 현황', 'JG040', 'JG130', '52', '1')`
-- [x] **Playwright 스크래퍼 동작 검증** (12.8s/학교, `scripts/scrape-schoolinfo.ts`)
-- [x] **옵션 A — 순수 fetch PoC 완성** (`scripts/fetch-career.ts`, 0.24s/학교)
-  - 4-step: GET landing → POST landing(JG_YEAR=2025) → loadGongSi 인자 regex 추출 → POST `/ei/pp/Pneipp_b06_s0p.do`
-  - `<td title="진학자 일반고">141</td>` 형식 — 파싱 매우 쉬움
-- [x] **다중 학교 sanity check**(성복중·미로중·평원중·대화중) — b06 파라미터 학교별 동일 검증
-- [x] **NEIS 키 의존성 격하** — sitemap(`/sitemap/school/main/school_main_{01..10}.xml`)에서 전국 학교 SHL_IDF_CD 직접 추출 가능. NEIS는 주소·시도코드 등 보강용으로만 필요.
-- [x] **법적 검토 명문화** (`docs/03-data-sources.md` §1)
-  - robots.txt: Allow: /, Crawl-delay 없음
-  - 공공누리 제3유형 (출처표시 + 변경금지, 상업적 이용 가능)
-  - 자동수집 금지 조항 없음
-  - 안전 호출 정책 명시(워커 2~3, 간격 300~800ms, 지수 backoff)
-- [x] NEIS schoolInfo API 호출 검증 (익명 호출은 페이지당 5건 한계)
+### 데이터 파이프라인
+- ✅ 전국 학교 master **13,137교** — sitemapindex 동적 follow, 주소/시군구/좌표 (97~99% 채움)
+- ✅ 전국 중학교 진로 **9,911 record** (학교 × 연도) — 2023·2024·2025
+- ✅ 진로 매칭 학교 **3,322교** (다년)
+- ✅ 데이터 무결성 100% (특목소계·자율소계·진학자·남여=합계 0건 불일치, 졸업자 13건 0.13% 학교알리미 원본 미세 불일치)
 
-## 진행 중 (in_progress)
+### 핵심 스크립트 (`scripts/`)
+- `build-school-master.ts` — sitemap → master (45분)
+- `filter-master.ts` — kind / sido / sigungu 필터
+- `fetch-career.ts` — 학교 1교 진로 fetch (순수 HTTP, 0.24s)
+- `batch-fetch.ts` — 학교 list × 연도 batch (queue 워커 3 + 300~800ms jitter + 지수 backoff)
+- `parse-career.ts` — 진로 HTML → JSON (td title 매핑)
+- `join-careers.ts` — master + careers-by-year → schools-with-career.jsonl (careersByYear 합본)
+- `analyze-careers.ts` — 상위 학교 표 (콘솔)
+- `check-data-integrity.ts` — 5가지 합산 검증
+- `import-to-supabase.ts` — JSONL → Supabase upsert
+- `poc-pip.ts` — Point-in-Polygon 알고리즘 (부동산 트랙용, 가짜 데이터로 PASS)
 
-- [ ] #4 수도권 중학교 마스터 리스트 — sitemap 경유로 NEIS 키 없이도 가능
-- [ ] #5 학교알리미 진로현황 스크래퍼 — **PoC 완료**. 다음은 파서(HTML → JSON) + 안전 정책 코드화
-- [ ] #6 학구도 SHP → GeoJSON 변환 — 코드 완성, SHP 파일 받으면 실행
+### UI (`app/`, `components/`, `lib/`)
+- `app/page.tsx` — 메인 (전국 중학교 표, force-dynamic)
+- `app/school/[shl]/page.tsx` — 학교 상세 (force-dynamic, 새 창 popup)
+- `components/SchoolTable.tsx` — 표 (시·구 컬럼, chip multi cascading 필터, 헤더 정렬, 컬럼 visibility, 다년 칩 합산, history pushState)
+- `components/SchoolDetailView.tsx` — 상세 (연도 매트릭스, 트렌드 line chart 2개, 카테고리 chip 토글)
+- `components/CareerChart.tsx` — 단년 막대 차트
+- `components/LocationFilter.tsx` — 보존 (현재 미사용, 추후 재사용 가능)
+- `lib/types.ts` — School/CareerRow/CareerData + 헬퍼 (eliteCount, sumYears 등)
+- `lib/columnLabels.ts` — 라벨 단일 소스 (CAREER_LABELS, META_LABELS)
+- `lib/data.ts` — Supabase / JSONL 자동 분기
 
-## 대기 중 (pending)
+### 인증·인프라
+- ✅ Vitest 15 tests (types · labels)
+- ✅ pre-push hook (vitest + check:data)
+- ✅ GitHub Actions CI (typecheck + build + test + check:data:fixture)
+- ✅ Branch protection (required `ci` + enforce_admins=true) → main 직접 push 막힘. PR 방식 표준.
+- ✅ data/fixtures/ (5교 × 3년) — CI 검증용 commit
+- ✅ git history 데이터 완전 제거 (filter-repo, force push 끝)
 
-- [ ] #1 [User] Firebase 프로젝트 생성 + Firestore/Functions/Hosting
-- [ ] #2 [User] 카카오 REST API 키 발급
-- [ ] #3 [User] 공공데이터포털 API 키 발급
-- [ ] #7 [Claude] 아파트 ↔ 중학교 매핑 PoC (사용자 키 #2 + #3 대기)
-- [ ] #8 [Both] Firebase Functions + Firestore 스키마 통합
-- [ ] #9 [User] NEIS OpenAPI 인증키 발급 (우선순위 격하 — sitemap이 대체 가능)
-- [ ] #10 [User] 학구도 SHP 파일 다운로드 → `data/raw/middle_zones.{shp,shx,dbf,prj}`
+### 라이선스/법적 (`docs/03-data-sources.md`)
+- 학교알리미 = 공공누리 제3유형 (출처표시 + 변경금지, 상업 이용 가능)
+- robots.txt: Allow: /, Crawl-delay 없음
+- 자동수집 금지 조항 없음
+
+## 진행 중 — Supabase + Vercel 배포
+
+- ✅ 코드 준비 완료 (PR #1)
+- ⏳ 사용자 액션 대기:
+  1. **Vercel** 콘솔에서 `simsimhugh/hakgun-viewer` import → 첫 deploy
+  2. **Supabase** 프로젝트 생성 (Seoul region) → URL / anon key / service_role key 받아서 전달
+- 받으면 Claude가:
+  - Supabase schema 적용 (`supabase/schema.sql`)
+  - `~/hakgun-data` → Supabase 적재 (`npm run import:supabase`)
+  - Vercel env 등록 (NEXT_PUBLIC_SUPABASE_URL/ANON_KEY)
+  - GitHub Secrets 등록 (SUPABASE_URL/SERVICE_ROLE_KEY for weekly sync)
+  - 배포 검증 + production URL 안내
+
+## 대기 트랙 (사용자 액션 필요)
+
+- **#10 학구도 SHP 다운로드** → 부동산 트랙 풀가동 (PIP 알고리즘은 검증됨)
+- **#2 카카오 REST API 키** → 동(행정동) 정보 좌표→reverse geocoding으로 master 보강 (한 번만 호출, 영구 캐싱) + 아파트 지오코딩
+- **#3 공공데이터포털 API 키** → 국토부 실거래가
+- **#9 NEIS 키** — 격하 (sitemap이 대체)
 
 ## 다음 세션 우선 액션
 
-1. **HTML → JSON 파서** 작성 (`scripts/parse-career.ts`)
-   - `<td title="진학자 XXX">N</td>` 형식 그대로 매핑
-   - 출력 스키마: `{ schoolName, year, totalGraduates, generalHigh, scienceHigh, foreignIntlHigh, ... }`
-   - 검증: `data/samples/fetch-career.html` (성복중 2025) 파싱 결과가 합산 315명 일치
-2. **안전 호출 정책 코드화**
-   - `p-limit` 또는 자작 queue (워커 2~3)
-   - 워커당 300~800ms jitter
-   - 지수 backoff 재시도 (1s → 2s → 4s → 8s, 최대 5회)
-3. **sitemap → 중학교 마스터 추출** 스크립트
-   - sitemap 10개에서 SHL_IDF_CD 전부 모음 → 1차 빠른 페이지 GET으로 학교명 추출 → "중학교" 필터
-   - 수도권 한정은 NEIS 키 받으면 ATPT_OFCDC_SC_CODE로 필터 가능, 또는 sitemap 학교명 + 주소 추출
-4. (옵션) NEIS 키 받으면 `fetch-schools.ts`로 보강 (주소·교육청 등)
-
-## 자산 위치
-
-| 파일 | 내용 |
-|---|---|
-| `scripts/fetch-schools.ts` | NEIS schoolInfo API로 수도권 중학교 마스터 수집 |
-| `scripts/scrape-schoolinfo.ts` | 학교알리미 Playwright 스크래퍼 (12.8s/학교) — reference |
-| **`scripts/fetch-career.ts`** | **순수 fetch 스크래퍼 PoC (0.24s/학교) — 정식 채택 후보** |
-| `scripts/convert-districts.ts` | SHP → GeoJSON 변환 |
-| `data/samples/fetch-career.html` | 옵션 A 결과 (성복중 2025 진로 페이지) |
-| `data/samples/fetch-landing-2025.html` | 옵션 A step 2 (JG_YEAR=2025 reload 결과) |
-| `data/samples/sungbok-gongsi-info.html` | Playwright 결과 (옵션 A와 비교용) |
-| `data/samples/sungbok-career-tables.html` | Playwright table dump |
-| `data/samples/sungbok-career.png` | 진로 페이지 전체 스크린샷 |
-| `data/samples/sungbok-landing.html` | 첫 진입 페이지 HTML (default 2026) |
-| `data/schools.json` | NEIS 익명 호출로 가져온 15개 학교 샘플 (gitignore — 키 발급 후 재생성) |
-| `/tmp/sm-{01..10}.xml` | 학교알리미 sitemap (전국 학교 SHL_IDF_CD 인덱스) — 휘발성, 필요 시 재다운로드 |
-
-## 환경 재현 — 새 머신에서 시작할 때
-
-```bash
-git clone https://github.com/simsimhugh/hakgun-viewer.git
-cd hakgun-viewer
-npm install
-npx playwright install chromium-headless-shell  # Ubuntu 24.04 이하면
-# Ubuntu 26.04는 시스템 Chrome 설치:
-#   sudo apt-get install -y google-chrome-stable
-```
-
-`.env` 파일은 별도로 생성 — `docs/04-api-keys.md` 참고.
+1. 사용자가 Vercel/Supabase 액션 마치고 토큰 전달
+2. Claude가 Supabase 스키마 → 데이터 적재 → Vercel deploy → 검증
+3. 그 후 부동산 트랙 (사용자 키/SHP 받는 대로)
+4. 디자인 polish (`/frontend-design` 또는 Firebase Studio — 기능 완성 후)
 
 ## 우선순위
 
-1. **사용자**: 학교알리미 진로 페이지 URL/onclick 확인 (최우선, 진로 PoC 차단 해제)
-2. **사용자**: NEIS 키 발급 → `#4` 풀 실행 가능
-3. **사용자**: 학구도 SHP 다운로드 → `#6` 실행 가능
-4. **사용자**: 카카오·공공데이터·Firebase 키 발급 → `#7`, `#8` 시작 가능
+1. Vercel + Supabase 배포 (사용자 액션 대기)
+2. 디자인 polish
+3. 부동산 트랙 (#7, #10, #2, #3)
