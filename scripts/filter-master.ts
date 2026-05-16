@@ -2,7 +2,7 @@
  * 학교 마스터 JSONL 필터링 + 분포 출력.
  *
  * 일반적 사용:
- *   - 수도권 중학교만 추출 + batch-fetch에 던질 SHL 리스트로 변환
+ *   - 전국 중학교만 추출 + batch-fetch에 던질 SHL 리스트로 변환
  *
  * CLI:
  *   tsx scripts/filter-master.ts <master.jsonl>

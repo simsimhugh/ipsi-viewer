@@ -1,4 +1,4 @@
-# hakgun-viewer
+# ipsi-viewer
 
 전국 중학교의 **고등학교 진학 결과**(특목·자사·외고·국제·예체·자사·자공·일반·특성화·마이스터)와 **학구 내 아파트 단지**를 한눈에 비교·정렬·필터링할 수 있는 웹 서비스.
 
@@ -14,7 +14,7 @@
 ## 디렉토리 구조
 
 ```
-hakgun-viewer/
+ipsi-viewer/
 ├── app/                      Next.js app router (page · school detail)
 ├── components/               SchoolTable · SchoolDetailView · CareerChart
 ├── lib/                      types, columnLabels (단일 소스), data (Supabase/JSONL 분기)

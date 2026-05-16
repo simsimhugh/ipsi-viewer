@@ -1,4 +1,4 @@
--- 학군 뷰어 Supabase 스키마.
+-- 입결 뷰어 Supabase 스키마.
 -- 적용: Supabase Dashboard → SQL Editor에 붙여넣기, 또는 supabase CLI로 migrate.
 
 -- ─── 학교 마스터 ──────────────────────────────────────────────────────────

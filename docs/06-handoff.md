@@ -3,7 +3,7 @@
 ## 재개
 
 ```bash
-cd /home/hugh/project/hakgun-viewer
+cd /home/hugh/project/ipsi-viewer
 claude --continue        # 이 디렉토리 최근 세션 이어가기
 # 또는
 claude --resume          # 여러 세션 중 선택
@@ -21,8 +21,8 @@ claude
 
 | 항목 | 값 |
 |---|---|
-| 프로젝트 디렉토리 | `/home/hugh/project/hakgun-viewer` |
-| GitHub | https://github.com/simsimhugh/hakgun-viewer |
+| 프로젝트 디렉토리 | `/home/hugh/project/ipsi-viewer` |
+| GitHub | https://github.com/simsimhugh/ipsi-viewer |
 | 브랜치 | main (branch protection: required `ci` + enforce_admins=true → PR 강제) |
 | 호스트 | WSL2 Ubuntu 26.04, Node 24.15 |
 | 데이터 위치 | `~/hakgun-data/` (repo 밖, 보안 분리) |
@@ -76,7 +76,7 @@ claude
 
 - ✅ 코드 준비 완료 (PR #1)
 - ⏳ 사용자 액션 대기:
-  1. **Vercel** 콘솔에서 `simsimhugh/hakgun-viewer` import → 첫 deploy
+  1. **Vercel** 콘솔에서 `simsimhugh/ipsi-viewer` import → 첫 deploy
   2. **Supabase** 프로젝트 생성 (Seoul region) → URL / anon key / service_role key 받아서 전달
 - 받으면 Claude가:
   - Supabase schema 적용 (`supabase/schema.sql`)
