@@ -1,0 +1,51 @@
+name: Weekly Data Sync
+
+# 매주 일요일 KST 03:00 (UTC 18:00) 학교알리미 → Supabase 동기화.
+# 수동 trigger도 가능: Actions tab → Run workflow.
+on:
+  schedule:
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "수집 연도 (예: 2023,2024,2025)"
+        default: "2023,2024,2025"
+        required: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HAKGUN_DATA_DIR: ${{ github.workspace }}/data/sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+
+      - name: 전국 중학교 SHL 추출 (기존 fixture master 활용 + 신규는 sitemap)
+        run: |
+          mkdir -p data/sync
+          # 우선 fixture master로 시도 (작은 test) — 실제 운영은 별도 master rebuild workflow
+          npx tsx scripts/filter-master.ts data/fixtures/school-master.jsonl --kind 중학교 --shl-only data/sync/middle.txt
+          wc -l data/sync/middle.txt
+
+      - name: 진로 batch (전국 중학교 × 다년)
+        run: |
+          npx tsx scripts/batch-fetch.ts data/sync/middle.txt \
+            --out data/sync/careers-by-year.jsonl \
+            --workers 3 \
+            --years "${{ inputs.years || '2023,2024,2025' }}"
+
+      - name: Supabase 적재
+        run: |
+          # master는 별도 workflow (분기). 여기는 careers만.
+          # import script가 master.jsonl도 보지만 우리는 careers만 upsert 충분
+          # → import script에 --skip-master 옵션 추가하거나 master file 미리 두기
+          echo "TODO: import:supabase careers-only mode"
+
+      - name: 데이터 무결성 검증
+        run: npm run check:data
