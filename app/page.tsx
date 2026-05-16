@@ -1,11 +1,12 @@
-import { loadSchoolsWithCareer } from "@/lib/data";
+import { loadSchoolsForMain } from "@/lib/data";
 import SchoolTable from "@/components/SchoolTable";
 
-// SSG 미사용 — 데이터 파일이 build 시점에 없을 수 있음 (CI 환경)
-export const dynamic = "force-dynamic";
+// ISR — 5분마다 재생성. 메인 테이블은 total만 사용하므로 male/female/ratePct 제외.
+// 첫 진입 TTFB·HTML size 모두 축소 (force-dynamic 제거).
+export const revalidate = 300;
 
 export default async function HomePage() {
-  const schools = await loadSchoolsWithCareer();
+  const schools = await loadSchoolsForMain();
   // 전국 중학교 (진로 매칭된 학교만)
   const middleSchools = schools.filter((s) => s.kind === "중학교");
 

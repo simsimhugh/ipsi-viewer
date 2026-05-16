@@ -18,15 +18,26 @@ const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_ANON);
 
 let _supabaseCache: { ts: number; list: School[] } | null = null;
+let _supabaseMainCache: { ts: number; list: School[] } | null = null;
 const SUPABASE_TTL = 5 * 60 * 1000; // 5분
+
+// 메인 페이지 전용 careers 컬럼 — male/female/rate_pct (JSONB) 제외하여 응답 size 대폭 축소.
+const CAREERS_MAIN_COLUMNS = [
+  "shl_idf_cd", "year",
+  "graduates", "general_high", "vocational_high",
+  "science_high", "foreign_intl_high", "arts_sports_high", "meister_high",
+  "special_purpose_subtotal", "private_autonomous", "public_autonomous",
+  "autonomous_subtotal", "other", "advanced_total",
+  "employed", "alt_education", "unemployed",
+].join(",");
 
 // PostgREST는 max-rows 1000 (Supabase 기본). 페이지네이션으로 전량 fetch.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAllRows<T>(sb: any, table: string): Promise<T[]> {
+async function fetchAllRows<T>(sb: any, table: string, columns: string = "*"): Promise<T[]> {
   const PAGE = 1000;
   const all: T[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await sb.from(table).select("*").range(from, from + PAGE - 1);
+    const { data, error } = await sb.from(table).select(columns).range(from, from + PAGE - 1);
     if (error) throw new Error(`${table} fetch (range ${from}~${from + PAGE - 1}): ${error.message}`);
     if (!data || data.length === 0) break;
     all.push(...(data as T[]));
@@ -35,57 +46,45 @@ async function fetchAllRows<T>(sb: any, table: string): Promise<T[]> {
   return all;
 }
 
-async function loadFromSupabase(): Promise<School[]> {
-  if (_supabaseCache && Date.now() - _supabaseCache.ts < SUPABASE_TTL) {
-    return _supabaseCache.list;
-  }
-  const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!, { auth: { persistSession: false } });
-  type SchoolRow = {
-    shl_idf_cd: string; school_name: string; sido_code: string; sido_name: string;
-    sd_schul_code: string | null; kind: School["kind"];
-    address: string | null; sigungu: string | null;
-    si: string | null; gu: string | null;
-    lat: number | null; lng: number | null;
-  };
-  type CareerRowSB = {
-    shl_idf_cd: string; year: number;
-    graduates: number; general_high: number; vocational_high: number;
-    science_high: number; foreign_intl_high: number; arts_sports_high: number; meister_high: number;
-    special_purpose_subtotal: number; private_autonomous: number; public_autonomous: number;
-    autonomous_subtotal: number; other: number; advanced_total: number;
-    employed: number; alt_education: number; unemployed: number;
-    male: CareerRow | null; female: CareerRow | null; rate_pct: CareerRow | null;
-  };
-  const [schools, careers] = await Promise.all([
-    fetchAllRows<SchoolRow>(sb, "schools"),
-    fetchAllRows<CareerRowSB>(sb, "careers"),
-  ]);
+type SchoolRowSB = {
+  shl_idf_cd: string; school_name: string; sido_code: string; sido_name: string;
+  sd_schul_code: string | null; kind: School["kind"];
+  address: string | null; sigungu: string | null;
+  si: string | null; gu: string | null;
+  lat: number | null; lng: number | null;
+};
 
-  // careers → careersByYear
-  const cb: Record<string, Record<string, CareerData>> = {};
-  for (const c of careers ?? []) {
-    if (!cb[c.shl_idf_cd]) cb[c.shl_idf_cd] = {};
-    const total: CareerRow = {
-      graduates: c.graduates, generalHigh: c.general_high, vocationalHigh: c.vocational_high,
-      scienceHigh: c.science_high, foreignIntlHigh: c.foreign_intl_high,
-      artsSportsHigh: c.arts_sports_high, meisterHigh: c.meister_high,
-      specialPurposeSubtotal: c.special_purpose_subtotal,
-      privateAutonomous: c.private_autonomous, publicAutonomous: c.public_autonomous,
-      autonomousSubtotal: c.autonomous_subtotal,
-      other: c.other, advancedTotal: c.advanced_total,
-      employed: c.employed, altEducation: c.alt_education, unemployed: c.unemployed,
-    };
-    cb[c.shl_idf_cd][String(c.year)] = {
-      year: c.year,
-      male: (c.male ?? total) as CareerRow,
-      female: (c.female ?? total) as CareerRow,
-      total,
-      ratePct: (c.rate_pct ?? total) as CareerRow,
-      totalGraduatesFromTable: c.graduates,
-    };
-  }
+type CareerRowMainSB = {
+  shl_idf_cd: string; year: number;
+  graduates: number; general_high: number; vocational_high: number;
+  science_high: number; foreign_intl_high: number; arts_sports_high: number; meister_high: number;
+  special_purpose_subtotal: number; private_autonomous: number; public_autonomous: number;
+  autonomous_subtotal: number; other: number; advanced_total: number;
+  employed: number; alt_education: number; unemployed: number;
+};
 
-  const list: School[] = (schools ?? []).map((s) => {
+type CareerRowFullSB = CareerRowMainSB & {
+  male: CareerRow | null; female: CareerRow | null; rate_pct: CareerRow | null;
+};
+
+function totalFromSB(c: CareerRowMainSB): CareerRow {
+  return {
+    graduates: c.graduates, generalHigh: c.general_high, vocationalHigh: c.vocational_high,
+    scienceHigh: c.science_high, foreignIntlHigh: c.foreign_intl_high,
+    artsSportsHigh: c.arts_sports_high, meisterHigh: c.meister_high,
+    specialPurposeSubtotal: c.special_purpose_subtotal,
+    privateAutonomous: c.private_autonomous, publicAutonomous: c.public_autonomous,
+    autonomousSubtotal: c.autonomous_subtotal,
+    other: c.other, advancedTotal: c.advanced_total,
+    employed: c.employed, altEducation: c.alt_education, unemployed: c.unemployed,
+  };
+}
+
+function schoolsFromSB(
+  schools: SchoolRowSB[],
+  cb: Record<string, Record<string, CareerData>>,
+): School[] {
+  return schools.map((s) => {
     const byYear = cb[s.shl_idf_cd];
     const yearsDesc = byYear ? Object.keys(byYear).map(Number).sort((a, b) => b - a) : [];
     const newest = yearsDesc[0];
@@ -104,8 +103,71 @@ async function loadFromSupabase(): Promise<School[]> {
       career: newest && byYear ? byYear[String(newest)] : null,
     };
   });
+}
 
+/**
+ * 풀 데이터 로드 — careers 모든 컬럼 (male/female/rate_pct JSONB 포함).
+ * 상세 페이지에서 사용. 응답 size 크지만 male/female/ratePct 표시에 필요.
+ */
+async function loadFromSupabase(): Promise<School[]> {
+  if (_supabaseCache && Date.now() - _supabaseCache.ts < SUPABASE_TTL) {
+    return _supabaseCache.list;
+  }
+  const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!, { auth: { persistSession: false } });
+  const [schools, careers] = await Promise.all([
+    fetchAllRows<SchoolRowSB>(sb, "schools"),
+    fetchAllRows<CareerRowFullSB>(sb, "careers"),
+  ]);
+
+  const cb: Record<string, Record<string, CareerData>> = {};
+  for (const c of careers ?? []) {
+    if (!cb[c.shl_idf_cd]) cb[c.shl_idf_cd] = {};
+    const total = totalFromSB(c);
+    cb[c.shl_idf_cd][String(c.year)] = {
+      year: c.year,
+      male: (c.male ?? total) as CareerRow,
+      female: (c.female ?? total) as CareerRow,
+      total,
+      ratePct: (c.rate_pct ?? total) as CareerRow,
+      totalGraduatesFromTable: c.graduates,
+    };
+  }
+
+  const list = schoolsFromSB(schools ?? [], cb);
   _supabaseCache = { ts: Date.now(), list };
+  return list;
+}
+
+/**
+ * 메인 페이지 전용 light 로드 — careers에서 male/female/rate_pct JSONB 제외.
+ * male/female/ratePct는 total로 fallback (메인 테이블은 total만 사용).
+ */
+async function loadFromSupabaseMain(): Promise<School[]> {
+  if (_supabaseMainCache && Date.now() - _supabaseMainCache.ts < SUPABASE_TTL) {
+    return _supabaseMainCache.list;
+  }
+  const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!, { auth: { persistSession: false } });
+  const [schools, careers] = await Promise.all([
+    fetchAllRows<SchoolRowSB>(sb, "schools"),
+    fetchAllRows<CareerRowMainSB>(sb, "careers", CAREERS_MAIN_COLUMNS),
+  ]);
+
+  const cb: Record<string, Record<string, CareerData>> = {};
+  for (const c of careers ?? []) {
+    if (!cb[c.shl_idf_cd]) cb[c.shl_idf_cd] = {};
+    const total = totalFromSB(c);
+    cb[c.shl_idf_cd][String(c.year)] = {
+      year: c.year,
+      male: total,
+      female: total,
+      total,
+      ratePct: total,
+      totalGraduatesFromTable: c.graduates,
+    };
+  }
+
+  const list = schoolsFromSB(schools ?? [], cb);
+  _supabaseMainCache = { ts: Date.now(), list };
   return list;
 }
 
@@ -143,6 +205,16 @@ export async function loadAllSchools(): Promise<School[]> {
 
 export async function loadSchoolsWithCareer(): Promise<School[]> {
   const all = await loadAllSchools();
+  return all.filter((s) => s.career != null || (s.careersByYear && Object.keys(s.careersByYear).length > 0));
+}
+
+/**
+ * 메인 페이지 전용 — careers JSONB(male/female/rate_pct) 제외한 light 로드.
+ * Supabase 응답 size를 대폭 축소 (메인 테이블은 total만 사용).
+ * JSONL fallback 시에는 풀 데이터와 동일.
+ */
+export async function loadSchoolsForMain(): Promise<School[]> {
+  const all = USE_SUPABASE ? await loadFromSupabaseMain() : await loadFromJsonl();
   return all.filter((s) => s.career != null || (s.careersByYear && Object.keys(s.careersByYear).length > 0));
 }
 
