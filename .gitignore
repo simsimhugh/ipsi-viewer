@@ -1,5 +1,9 @@
 node_modules/
-data/
+data/*
+# 테스트 fixture만 commit (5교 × 3년 sample)
+!data/fixtures/
+!data/fixtures/**
+tsconfig.tsbuildinfo
 .env
 .env.local
 .firebase/

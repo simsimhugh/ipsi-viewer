@@ -1,0 +1,34 @@
+#!/bin/bash
+# git pre-push hook — push 전 자동 검증.
+#   1) Vitest unit test
+#   2) 데이터 무결성 (있을 때만, 1% 이내 허용)
+# 설치: `npm run setup:hooks`
+# 강제 push: `git push --no-verify`
+
+set -e
+
+# node_modules 없으면 (clone 직후) SKIP
+if [ ! -d node_modules ]; then
+  echo "▶ pre-push: node_modules 없음 — SKIP"
+  exit 0
+fi
+
+echo "▶ pre-push [1/2]: Vitest unit test"
+npm run -s test:run || { echo "❌ test 실패 — push 차단"; exit 1; }
+
+echo "▶ pre-push [2/2]: 데이터 무결성 검증"
+set +e
+npm run -s check:data
+code=$?
+set -e
+
+if [ $code -eq 0 ]; then
+  echo "▶ pre-push: ✅ OK"
+elif [ $code -eq 2 ]; then
+  echo "▶ pre-push: 데이터 없음 — SKIP"
+else
+  echo ""
+  echo "▶ pre-push: ❌ 데이터 무결성 실패 — push 차단"
+  echo "  강제 push: git push --no-verify"
+  exit 1
+fi
