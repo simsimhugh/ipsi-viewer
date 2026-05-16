@@ -1,14 +1,23 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import { headers } from "next/headers";
 import "./globals.css";
 import ProtectionLayer from "@/components/ProtectionLayer";
+import { recordVisit } from "@/lib/stats";
 
 export const metadata: Metadata = {
   title: "입결 뷰어 — 전국 학교 입시 결과",
   description: "전국 중학교 졸업생 입시 결과(특목·자사·과학·외고·국제) 한눈 비교",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// 매 요청 visitor count++ — static cache 피함
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const h = headers();
+  const ip = h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || null;
+  const stats = await recordVisit(ip);
+
   return (
     <html lang="ko">
       <body>
@@ -25,10 +34,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
         <main>{children}</main>
         <footer className="mt-16 border-t border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-6 py-6 text-xs text-slate-500">
-            본 서비스는 학교알리미(<a className="underline" href="https://www.schoolinfo.go.kr" target="_blank" rel="noreferrer">schoolinfo.go.kr</a>)
-            의 공시정보를 공공누리 제3유형(출처표시 + 변경금지, 상업적 이용 가능)에 따라 재구성합니다.
-            수치는 원본 그대로 표시되며 가공·수정하지 않습니다.
+          <div className="mx-auto max-w-7xl px-6 py-6 text-xs text-slate-500 space-y-2">
+            {stats && (
+              <div className="text-[11px] text-slate-400 tabular-nums">
+                지금까지 <b className="text-slate-600">{stats.visitors.toLocaleString()}명</b>·
+                <b className="text-slate-600">{stats.views.toLocaleString()}회</b> 방문
+              </div>
+            )}
+            <div>
+              본 서비스는 학교알리미(<a className="underline" href="https://www.schoolinfo.go.kr" target="_blank" rel="noreferrer">schoolinfo.go.kr</a>)
+              의 공시정보를 공공누리 제3유형(출처표시 + 변경금지, 상업적 이용 가능)에 따라 재구성합니다.
+              수치는 원본 그대로 표시되며 가공·수정하지 않습니다.
+            </div>
           </div>
         </footer>
         <Analytics />

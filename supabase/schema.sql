@@ -82,3 +82,52 @@ create policy "careers public read"   on careers   for select using (true);
 grant select on schools, careers to anon, authenticated;
 grant all    on schools, careers, batch_runs to service_role;
 grant usage, select on all sequences in schema public to service_role;
+
+-- ─── 방문자 카운터 ────────────────────────────────────────────────────────
+-- singleton 합계 + 영구 unique 방문자 (IP sha256 단방향 해시, salt 적용)
+create table if not exists site_stats (
+  id              integer primary key default 1 check (id = 1),
+  total_views     bigint not null default 0,
+  total_visitors  bigint not null default 0,
+  updated_at      timestamptz not null default now()
+);
+insert into site_stats (id) values (1) on conflict do nothing;
+
+create table if not exists unique_visitors (
+  ip_hash    text primary key,
+  first_seen timestamptz not null default now()
+);
+
+-- atomic 방문 기록: 첫 방문(신규 hash)이면 visitors++, 항상 views++.
+-- 반환: (현재 views, 현재 visitors)
+create or replace function record_visit(visitor_hash text)
+returns table(views bigint, visitors bigint)
+language plpgsql
+security definer
+as $$
+declare
+  inserted boolean := false;
+begin
+  insert into unique_visitors(ip_hash) values (visitor_hash)
+  on conflict do nothing;
+  inserted := found;
+
+  update site_stats
+     set total_views    = total_views + 1,
+         total_visitors = total_visitors + case when inserted then 1 else 0 end,
+         updated_at     = now()
+   where id = 1
+  returning total_views, total_visitors into views, visitors;
+
+  return next;
+end;
+$$;
+
+alter table site_stats       enable row level security;
+alter table unique_visitors  enable row level security;
+create policy "site_stats public read" on site_stats for select using (true);
+-- unique_visitors는 RPC 통해서만 접근 — public read 없음 (개인정보 보호)
+
+grant select  on site_stats             to anon, authenticated;
+grant all     on site_stats, unique_visitors to service_role;
+grant execute on function record_visit  to anon, authenticated, service_role;
