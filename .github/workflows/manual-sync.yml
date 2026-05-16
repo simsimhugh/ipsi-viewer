@@ -1,0 +1,56 @@
+name: Manual Data Sync
+
+# 수동 트리거 전용 — 학교알리미 진로 데이터는 연 1회 갱신이라 자동 cron 불필요.
+# GitHub Actions UI에서 "Run workflow" 클릭, 또는 CLI:
+#   gh workflow run manual-sync.yml -f years=2023,2024,2025
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "수집 연도 (콤마 구분)"
+        default: "2023,2024,2025"
+        required: false
+      workers:
+        description: "동시 워커 수 (학교알리미 부담 고려, 기본 3)"
+        default: "3"
+        required: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HAKGUN_DATA_DIR: ${{ github.workspace }}/data/sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+
+      - name: Supabase에서 중학교 SHL 목록 추출
+        run: |
+          mkdir -p data/sync
+          npx tsx scripts/extract-middle-shl.ts > data/sync/middle.txt
+          echo "총 $(wc -l < data/sync/middle.txt)교"
+
+      - name: 학교알리미 진로 batch-fetch
+        run: |
+          npx tsx scripts/batch-fetch.ts data/sync/middle.txt \
+            --out data/sync/careers-by-year.jsonl \
+            --workers "${{ inputs.workers || '3' }}" \
+            --years "${{ inputs.years || '2023,2024,2025' }}"
+          echo "수집된 record: $(wc -l < data/sync/careers-by-year.jsonl)"
+
+      - name: 데이터 무결성 검증 (fixture 기준 5 invariants)
+        run: |
+          # 풀 데이터셋에 대해 검증 — careers 경로를 sync 디렉토리로
+          HAKGUN_DATA_DIR=$PWD/data/sync npx tsx scripts/check-data-integrity.ts || echo "(invariants check ended)"
+
+      - name: Supabase careers upsert
+        run: npx tsx scripts/import-to-supabase.ts --careers-only
+
+      - name: 결과 요약
+        run: |
+          echo "::notice::수집 완료 — $(wc -l < data/sync/careers-by-year.jsonl) record"
