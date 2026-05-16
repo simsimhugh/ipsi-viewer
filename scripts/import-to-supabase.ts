@@ -67,27 +67,33 @@ interface CareerBatchRecord {
   };
 }
 
+const CAREERS_ONLY = process.argv.includes("--careers-only");
+
 async function main() {
-  console.log("[1] schools (master)");
-  const master = await loadJsonl<MasterRecord>("school-master.jsonl");
-  const schoolRows = master.map((m) => {
-    const { si, gu } = siGuOf(m.sidoName, m.sigungu);
-    return {
-      shl_idf_cd:    m.SHL_IDF_CD,
-      school_name:   m.schoolName,
-      sido_code:     m.sidoCode,
-      sido_name:     m.sidoName,
-      sd_schul_code: m.sdSchulCode,
-      kind:          m.kind,
-      address:       m.address ?? null,
-      sigungu:       m.sigungu ?? null,
-      si, gu,
-      lat:           m.lat ?? null,
-      lng:           m.lng ?? null,
-    };
-  });
-  console.log(`  ${schoolRows.length} 학교 upsert 시작`);
-  await batchUpsert("schools", schoolRows);
+  if (!CAREERS_ONLY) {
+    console.log("[1] schools (master)");
+    const master = await loadJsonl<MasterRecord>("school-master.jsonl");
+    const schoolRows = master.map((m) => {
+      const { si, gu } = siGuOf(m.sidoName, m.sigungu);
+      return {
+        shl_idf_cd:    m.SHL_IDF_CD,
+        school_name:   m.schoolName,
+        sido_code:     m.sidoCode,
+        sido_name:     m.sidoName,
+        sd_schul_code: m.sdSchulCode,
+        kind:          m.kind,
+        address:       m.address ?? null,
+        sigungu:       m.sigungu ?? null,
+        si, gu,
+        lat:           m.lat ?? null,
+        lng:           m.lng ?? null,
+      };
+    });
+    console.log(`  ${schoolRows.length} 학교 upsert 시작`);
+    await batchUpsert("schools", schoolRows);
+  } else {
+    console.log("[1] schools (master) — 건너뜀 (--careers-only)");
+  }
 
   console.log("[2] careers (학교 × 연도)");
   const careers = await loadJsonl<CareerBatchRecord>("careers-by-year.jsonl");
