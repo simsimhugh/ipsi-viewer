@@ -5,7 +5,7 @@
 ```mermaid
 flowchart LR
   User([학부모·사용자])
-  Web[hakgun-viewer Web]
+  Web[ipsi-viewer Web]
   Firestore[(Firestore)]
   Functions[Firebase Functions]
 

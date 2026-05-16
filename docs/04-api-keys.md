@@ -14,7 +14,7 @@
 ## 1. Firebase
 
 1. https://console.firebase.google.com 접속 (Google 계정)
-2. **프로젝트 추가** → 이름 입력 (예: `hakgun-viewer`)
+2. **프로젝트 추가** → 이름 입력 (예: `ipsi-viewer`)
 3. Google Analytics 사용 안 함
 4. 생성 후 좌측 **빌드 → Firestore Database** → **데이터베이스 만들기**
    - 위치: `asia-northeast3` (서울)
@@ -23,13 +23,13 @@
    - 결제 카드 등록 필요 (무료 한도 내 운영)
 6. 좌측 **빌드 → Hosting** → **시작하기**
 
-기록할 값: 프로젝트 ID (예: `hakgun-viewer-abc12`)
+기록할 값: 프로젝트 ID (예: `ipsi-viewer-abc12`)
 
 ## 2. Kakao Local API
 
 1. https://developers.kakao.com 접속 (Kakao 계정)
 2. **내 애플리케이션** → **애플리케이션 추가**
-3. 앱 이름: `hakgun-viewer`
+3. 앱 이름: `ipsi-viewer`
 4. 생성 후 **앱 키** 페이지에서 **REST API 키** 복사
 5. **플랫폼** → **Web 플랫폼 등록** → `http://localhost:3000`, 배포 후 호스팅 도메인 추가
 
@@ -60,7 +60,7 @@
 `.env` 파일을 프로젝트 루트에 생성:
 
 ```dotenv
-FIREBASE_PROJECT_ID=hakgun-viewer-abc12
+FIREBASE_PROJECT_ID=ipsi-viewer-abc12
 KAKAO_REST_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 DATA_GO_KR_KEY=xxxxxxxxxxxxxxxxxxxx...
 NEIS_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

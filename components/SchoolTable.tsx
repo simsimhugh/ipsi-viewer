@@ -80,6 +80,7 @@ const INITIAL: TableState = {
 
 const PAGE_SIZE = 50;
 const HISTORY_KEY = "__schoolTable";
+const STORAGE_KEY = "ipsi-viewer.table.state.v1";
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────
 export default function SchoolTable({ schools }: { schools: School[] }) {
@@ -87,9 +88,17 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const initRef = useRef(false);
 
-  // 마운트 시 INITIAL을 현재 history entry에 replace (뒤로가기 시작점 확보)
+  // 마운트 시 localStorage에서 필터 복원 + history replaceState
   useEffect(() => {
-    window.history.replaceState({ ...(window.history.state ?? {}), [HISTORY_KEY]: INITIAL }, "");
+    let restored: TableState | null = null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) restored = { ...INITIAL, ...JSON.parse(raw) } as TableState;
+    } catch { /* corrupt JSON 등 — 무시 */ }
+    const initial = restored ?? INITIAL;
+    window.history.replaceState({ ...(window.history.state ?? {}), [HISTORY_KEY]: initial }, "");
+    if (restored) setState(restored);
+
     const onPop = (e: PopStateEvent) => {
       const s = (e.state ?? {})[HISTORY_KEY];
       if (s) setState(s);
@@ -98,10 +107,11 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // 상태 변경 시 history에 push (URL 변경 안 함 → 새로고침 시 초기화)
+  // 상태 변경 시 history push + localStorage 저장 (영속화)
   useEffect(() => {
     if (!initRef.current) { initRef.current = true; return; }
     window.history.pushState({ ...(window.history.state ?? {}), [HISTORY_KEY]: state }, "");
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* quota 등 */ }
   }, [state]);
 
   // 팝오버 outside click + ESC 닫기
