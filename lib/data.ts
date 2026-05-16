@@ -13,9 +13,19 @@ const JSONL_PATH = path.join(DATA_DIR, "schools-with-career.jsonl");
 
 let _cache: { mtimeMs: number; list: School[] } | null = null;
 
-/** 전체 학교 로딩 (파일 mtime 기반 캐시 무효화). server-only. */
+/** 전체 학교 로딩 (파일 mtime 기반 캐시 무효화). server-only.
+ *  데이터 파일이 없으면 빈 배열 반환 + 경고 (CI build 등). */
 export async function loadAllSchools(): Promise<School[]> {
-  const st = await stat(JSONL_PATH);
+  let st;
+  try {
+    st = await stat(JSONL_PATH);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+      console.warn(`[lib/data] ${JSONL_PATH} 없음 — 빈 배열 반환`);
+      return [];
+    }
+    throw e;
+  }
   if (_cache && _cache.mtimeMs === st.mtimeMs) return _cache.list;
   const raw = await readFile(JSONL_PATH, "utf-8");
   const list: School[] = raw

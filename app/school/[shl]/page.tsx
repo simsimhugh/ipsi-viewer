@@ -3,6 +3,9 @@ import Link from "next/link";
 import { loadSchool } from "@/lib/data";
 import SchoolDetailView from "@/components/SchoolDetailView";
 
+// SSG 미사용 — 데이터 파일이 build 시점에 없을 수 있음 (CI 환경)
+export const dynamic = "force-dynamic";
+
 export default async function SchoolPage({ params }: { params: { shl: string } }) {
   const SHL = decodeURIComponent(params.shl);
   const school = await loadSchool(SHL);

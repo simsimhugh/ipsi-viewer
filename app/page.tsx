@@ -1,6 +1,9 @@
 import { loadSchoolsWithCareer } from "@/lib/data";
 import SchoolTable from "@/components/SchoolTable";
 
+// SSG 미사용 — 데이터 파일이 build 시점에 없을 수 있음 (CI 환경)
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const schools = await loadSchoolsWithCareer();
   // 전국 중학교 (진로 매칭된 학교만)
