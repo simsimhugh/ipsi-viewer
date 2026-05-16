@@ -76,3 +76,9 @@ alter table batch_runs enable row level security;
 create policy "schools public read"   on schools   for select using (true);
 create policy "careers public read"   on careers   for select using (true);
 -- batch_runs는 운영 정보 — 인증된 service_role만 (RLS default deny + service_role bypass)
+
+-- ─── PostgREST grants ─────────────────────────────────────────────────────
+-- "Automatically expose new tables" 설정이 OFF여서 명시적 grant 필요.
+grant select on schools, careers to anon, authenticated;
+grant all    on schools, careers, batch_runs to service_role;
+grant usage, select on all sequences in schema public to service_role;
