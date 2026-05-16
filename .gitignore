@@ -1,13 +1,5 @@
 node_modules/
-data/*.json
-data/*.geojson
-data/*.shp
-data/*.shx
-data/*.dbf
-data/*.prj
-data/*.zip
-data/raw/
-!data/samples/
+data/
 .env
 .env.local
 .firebase/

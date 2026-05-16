@@ -1,16 +1,18 @@
 "use client";
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import type { School, CareerRow } from "@/lib/types";
-import { eliteCount, elitePct } from "@/lib/types";
+import { dynamicEliteCount, dynamicElitePct, sumYears } from "@/lib/types";
+import { CAREER_LABELS, META_LABELS } from "@/lib/columnLabels";
 
 // ─── 컬럼 정의 ────────────────────────────────────────────────────────────
-type FilterType = "text" | "loc" | "range";
+type FilterType = "text" | "loc" | "range" | "chip";
 
 interface Col {
   key: string;
   label: string;
+  /** hover 시 표시할 풀네임/설명 */
+  description?: string;
   numeric: boolean;
   align: "left" | "right";
   filterType?: FilterType;
@@ -24,42 +26,52 @@ interface Col {
 
 const t = (s: School): CareerRow => s.career!.total;
 
-const COLS: Col[] = [
-  { key: "schoolName", label: "학교명", numeric: false, align: "left",
-    filterType: "text", get: (s) => s.schoolName },
-  { key: "loc", label: "지역", numeric: false, align: "left", filterType: "loc",
-    get: (s) => `${s.sidoName} ${s.sigungu ?? ""}`,
-    render: (s) => s.sigungu ? `${s.sidoName} ${s.sigungu}` : s.sidoName, muted: true },
-  { key: "graduates", label: "졸업", numeric: true, align: "right", filterType: "range", get: (s) => t(s).graduates },
-  { key: "generalHigh", label: "일반", numeric: true, align: "right", filterType: "range", get: (s) => t(s).generalHigh, muted: true },
-  { key: "scienceHigh", label: "과학", numeric: true, align: "right", filterType: "range", get: (s) => t(s).scienceHigh, toggleable: true },
-  { key: "foreignIntlHigh", label: "외고/국제", numeric: true, align: "right", filterType: "range", get: (s) => t(s).foreignIntlHigh, toggleable: true },
-  { key: "artsSportsHigh", label: "예체", numeric: true, align: "right", filterType: "range", get: (s) => t(s).artsSportsHigh, muted: true, toggleable: true },
-  { key: "privateAutonomous", label: "자사", numeric: true, align: "right", filterType: "range", get: (s) => t(s).privateAutonomous, toggleable: true },
-  { key: "publicAutonomous", label: "자공", numeric: true, align: "right", filterType: "range", get: (s) => t(s).publicAutonomous, muted: true, toggleable: true },
-  { key: "eliteCount", label: "합계", numeric: true, align: "right", filterType: "range", get: (s) => eliteCount(t(s)), emphasis: true },
-  { key: "elitePct", label: "비율", numeric: true, align: "right", filterType: "range", get: (s) => elitePct(t(s)), emphasis: true,
-    render: (s) => `${elitePct(t(s)).toFixed(1)}%` },
-];
+const METRO_CITIES_SET = new Set(["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종"]);
+function siOf(s: School): string {
+  const tokens = (s.sigungu ?? "").split(/\s+/).filter(Boolean);
+  return METRO_CITIES_SET.has(s.sidoName) ? s.sidoName : (tokens[0] ?? "");
+}
+function guOf(s: School): string {
+  const tokens = (s.sigungu ?? "").split(/\s+/).filter(Boolean);
+  return METRO_CITIES_SET.has(s.sidoName) ? (tokens[0] ?? "") : (tokens[1] ?? "");
+}
 
-const SIDO_PRESETS = ["전체", "서울", "경기", "인천"] as const;
-type SidoPreset = typeof SIDO_PRESETS[number];
+const COLS: Col[] = [
+  { key: "schoolName", ...META_LABELS.schoolName, numeric: false, align: "left",
+    filterType: "text", get: (s) => s.schoolName },
+  { key: "si", ...META_LABELS.si, numeric: false, align: "left", filterType: "chip", get: siOf, muted: true },
+  { key: "gu", ...META_LABELS.gu, numeric: false, align: "left", filterType: "chip", get: guOf, muted: true },
+  { key: "graduates",       ...CAREER_LABELS.graduates,       numeric: true, align: "right", filterType: "range", get: (s) => t(s).graduates },
+  { key: "generalHigh",     ...CAREER_LABELS.generalHigh,     numeric: true, align: "right", filterType: "range", get: (s) => t(s).generalHigh, muted: true, toggleable: true },
+  { key: "scienceHigh",     ...CAREER_LABELS.scienceHigh,     numeric: true, align: "right", filterType: "range", get: (s) => t(s).scienceHigh, toggleable: true },
+  { key: "foreignIntlHigh", ...CAREER_LABELS.foreignIntlHigh, numeric: true, align: "right", filterType: "range", get: (s) => t(s).foreignIntlHigh, toggleable: true },
+  { key: "artsSportsHigh",  ...CAREER_LABELS.artsSportsHigh,  numeric: true, align: "right", filterType: "range", get: (s) => t(s).artsSportsHigh, toggleable: true },
+  { key: "privateAutonomous", ...CAREER_LABELS.privateAutonomous, numeric: true, align: "right", filterType: "range", get: (s) => t(s).privateAutonomous, toggleable: true },
+  { key: "publicAutonomous",  ...CAREER_LABELS.publicAutonomous,  numeric: true, align: "right", filterType: "range", get: (s) => t(s).publicAutonomous, toggleable: true },
+  { key: "vocationalHigh",  ...CAREER_LABELS.vocationalHigh,  numeric: true, align: "right", filterType: "range", get: (s) => t(s).vocationalHigh, muted: true, toggleable: true },
+  { key: "meisterHigh",     ...CAREER_LABELS.meisterHigh,     numeric: true, align: "right", filterType: "range", get: (s) => t(s).meisterHigh, muted: true, toggleable: true },
+  { key: "eliteCount",        ...CAREER_LABELS.eliteCount,        numeric: true, align: "right", filterType: "range", get: () => 0, emphasis: true },
+  { key: "elitePct",          ...CAREER_LABELS.elitePct,          numeric: true, align: "right", filterType: "range", get: () => 0, emphasis: true },
+];
 
 // ─── 상태 ─────────────────────────────────────────────────────────────────
 interface TableState {
   textFilters: Record<string, string>;
-  loc: { sido: SidoPreset; sigungu: string[] };
+  chipFilters: Record<string, string[]>;
   ranges: Record<string, { min?: number; max?: number }>;
+  /** 선택된 연도. 빈 배열이면 "전체 합산" (모든 가능 연도) */
+  yearsSelected: number[];
   sortKey: string;
   sortDir: "asc" | "desc";
   page: number;
-  hiddenCols: string[]; // 숨김 처리할 컬럼 key 리스트
+  hiddenCols: string[];
 }
 
 const INITIAL: TableState = {
   textFilters: {},
-  loc: { sido: "전체", sigungu: [] },
+  chipFilters: {},
   ranges: {},
+  yearsSelected: [], // 빈 = 전체 합산
   sortKey: "elitePct",
   sortDir: "desc",
   page: 0,
@@ -117,14 +129,29 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
     });
   }
 
-  const sigunguOptions = useMemo(() => {
-    const pool = state.loc.sido === "전체" ? schools : schools.filter((s) => s.sidoName === state.loc.sido);
-    const set = new Set<string>();
-    for (const s of pool) {
-      if (s.sigungu) for (const tk of s.sigungu.split(/\s+/)) if (tk) set.add(tk);
+  // 표시 컬럼 + 합계/비율 계산용 visible toggleable 키 집합
+  const visibleCols = COLS.filter((c) => !state.hiddenCols.includes(c.key));
+  const visibleToggleableKeys = useMemo(
+    () => new Set(COLS.filter((c) => c.toggleable && !state.hiddenCols.includes(c.key)).map((c) => c.key)),
+    [state.hiddenCols],
+  );
+
+  // 다년 — 전체 학교에서 가능한 연도 모두 수집
+  const yearsAvailable = useMemo(() => {
+    const set = new Set<number>();
+    for (const s of schools) {
+      if (s.careersByYear) for (const y of Object.keys(s.careersByYear)) set.add(Number(y));
+      else if (s.career?.year) set.add(s.career.year);
     }
-    return [...set].sort((a, b) => a.localeCompare(b, "ko"));
-  }, [state.loc.sido, schools]);
+    return [...set].sort((a, b) => b - a);
+  }, [schools]);
+
+  // 사용자가 선택 안 했으면 모든 연도 합산
+  const effectiveYears = state.yearsSelected.length > 0 ? state.yearsSelected : yearsAvailable;
+  const rowOf = (s: School): CareerRow => sumYears(s, effectiveYears);
+  // 동적 elite 헬퍼 (rowOf + visible toggleable 기준)
+  const eliteOf    = (s: School) => dynamicEliteCount(rowOf(s), visibleToggleableKeys);
+  const elitePctOf = (s: School) => dynamicElitePct(rowOf(s), visibleToggleableKeys);
 
   const filtered = useMemo(() => {
     let out = schools;
@@ -135,37 +162,46 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
       if (!col) continue;
       out = out.filter((s) => String(col.get(s)).includes(q));
     }
-    if (state.loc.sido !== "전체") out = out.filter((s) => s.sidoName === state.loc.sido);
-    if (state.loc.sigungu.length > 0) {
-      const sel = state.loc.sigungu;
-      out = out.filter((s) => {
-        const tk = (s.sigungu ?? "").split(/\s+/);
-        return sel.some((x) => tk.includes(x));
-      });
-    }
-    for (const [k, r] of Object.entries(state.ranges)) {
+    // chip multi 필터 (시·구). 빈 배열이면 필터 안 함.
+    for (const [k, chips] of Object.entries(state.chipFilters)) {
+      if (!chips || chips.length === 0) continue;
       const col = COLS.find((c) => c.key === k);
-      if (!col || !r) continue;
-      if (r.min !== undefined) out = out.filter((s) => (col.get(s) as number) >= r.min!);
-      if (r.max !== undefined) out = out.filter((s) => (col.get(s) as number) <= r.max!);
+      if (!col) continue;
+      const set = new Set(chips);
+      out = out.filter((s) => set.has(String(col.get(s))));
+    }
+    // 다년 합산 + dynamic 합계/비율 — 모든 진로 카테고리 키에 대해 rowOf 사용
+    const valueOf = (key: string, s: School): number | string => {
+      if (key === "schoolName") return s.schoolName;
+      if (key === "si") return siOf(s);
+      if (key === "gu") return guOf(s);
+      const row = rowOf(s);
+      if (key === "eliteCount") return dynamicEliteCount(row, visibleToggleableKeys);
+      if (key === "elitePct")   return dynamicElitePct(row, visibleToggleableKeys);
+      return (row as unknown as Record<string, number>)[key] ?? 0;
+    };
+    for (const [k, r] of Object.entries(state.ranges)) {
+      if (!r) continue;
+      if (r.min !== undefined) out = out.filter((s) => (valueOf(k, s) as number) >= r.min!);
+      if (r.max !== undefined) out = out.filter((s) => (valueOf(k, s) as number) <= r.max!);
     }
     const sortCol = COLS.find((c) => c.key === state.sortKey) ?? COLS[COLS.length - 1];
     const dirFactor = state.sortDir === "asc" ? 1 : -1;
     return [...out].sort((a, b) => {
-      const va = sortCol.get(a);
-      const vb = sortCol.get(b);
+      const va = valueOf(state.sortKey, a);
+      const vb = valueOf(state.sortKey, b);
       if (sortCol.numeric) return ((va as number) - (vb as number)) * dirFactor;
       return (va as string).localeCompare(vb as string, "ko") * dirFactor;
     });
-  }, [schools, state]);
+  }, [schools, state, visibleToggleableKeys, effectiveYears.join(",")]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(state.page, pageCount - 1);
   const slice = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   function isColFiltered(key: string): boolean {
-    if (key === "loc") return state.loc.sido !== "전체" || state.loc.sigungu.length > 0;
     if (state.textFilters[key]?.trim()) return true;
+    if ((state.chipFilters[key]?.length ?? 0) > 0) return true;
     const r = state.ranges[key];
     return r != null && (r.min !== undefined || r.max !== undefined);
   }
@@ -177,8 +213,6 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
       return { ...s, hiddenCols: [...hidden] };
     });
   }
-
-  const visibleCols = COLS.filter((c) => !state.hiddenCols.includes(c.key));
 
   return (
     <div className="space-y-4">
@@ -193,6 +227,36 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
         >
           모든 필터 초기화
         </button>
+      </div>
+
+      {/* 연도 칩 multi — 빈 선택 = 전체 합산 */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-slate-500 mr-1">연도:</span>
+        {yearsAvailable.map((y) => {
+          const on = state.yearsSelected.includes(y);
+          return (
+            <button
+              key={y}
+              onClick={() => {
+                const next = on ? state.yearsSelected.filter((x) => x !== y) : [...state.yearsSelected, y].sort((a, b) => b - a);
+                patch({ yearsSelected: next });
+              }}
+              className={`text-xs px-2 py-0.5 rounded border transition cursor-pointer ${
+                on
+                  ? "bg-brand-600 border-brand-600 text-white"
+                  : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
+              }`}
+              title={`${y}년 진로 데이터${on ? " (선택 해제)" : " 포함"}`}
+            >
+              {y}
+            </button>
+          );
+        })}
+        <span className="text-[10px] text-slate-400 ml-1">
+          {state.yearsSelected.length === 0
+            ? `전체 ${yearsAvailable.length}개년 합산`
+            : `${state.yearsSelected.length}개년 합산`}
+        </span>
       </div>
 
       {/* 표시 컬럼 토글 — 진학 학교 종류만 (학교명·지역·졸업·일반·합계·비율은 항상 표시) */}
@@ -229,6 +293,7 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
                 return (
                   <th
                     key={c.key}
+                    title={c.description ?? c.label}
                     className={`relative px-3 py-2 font-medium ${c.align === "right" ? "text-right" : "text-left"} ${c.emphasis ? "border-l border-slate-200" : ""}`}
                   >
                     <div className={`flex items-center gap-1 ${c.align === "right" ? "justify-end" : "justify-between"}`}>
@@ -255,8 +320,8 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
                         col={c}
                         state={state}
                         patch={patch}
-                        sigunguOptions={sigunguOptions}
                         align={c.align}
+                        schools={schools}
                       />
                     )}
                   </th>
@@ -271,7 +336,14 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
             {slice.map((s) => (
               <tr key={s.SHL_IDF_CD} className="border-t border-slate-100 hover:bg-slate-50">
                 {visibleCols.map((c) => {
-                  const display = c.render ? c.render(s) : c.get(s);
+                  const row = rowOf(s);
+                  const display =
+                    c.key === "schoolName" ? s.schoolName :
+                    c.key === "si" ? siOf(s) :
+                    c.key === "gu" ? guOf(s) :
+                    c.key === "eliteCount" ? eliteOf(s) :
+                    c.key === "elitePct"   ? `${elitePctOf(s).toFixed(1)}%` :
+                    c.render ? c.render(s) : ((row as unknown as Record<string, number>)[c.key] ?? 0);
                   const isLink = c.key === "schoolName";
                   return (
                     <td
@@ -279,14 +351,19 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
                       className={`px-3 py-2 ${c.align === "right" ? "text-right" : ""} ${c.muted ? "text-slate-500 text-xs" : ""} ${c.emphasis ? "font-medium border-l border-slate-200" : ""} ${c.key === "elitePct" ? "font-bold text-brand-700" : ""}`}
                     >
                       {isLink ? (
-                        <Link
-                          href={`/school/${encodeURIComponent(s.SHL_IDF_CD)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-brand-700 hover:underline"
+                        <button
+                          onClick={() => {
+                            const url = `/school/${encodeURIComponent(s.SHL_IDF_CD)}`;
+                            window.open(
+                              url,
+                              `school-${s.SHL_IDF_CD.slice(0, 8)}`,
+                              "popup=yes,width=960,height=900,scrollbars=yes,resizable=yes,noopener,noreferrer",
+                            );
+                          }}
+                          className="text-brand-700 hover:underline text-left"
                         >
                           {display}
-                        </Link>
+                        </button>
                       ) : display}
                     </td>
                   );
@@ -316,12 +393,12 @@ interface PopoverProps {
   col: Col;
   state: TableState;
   patch: (p: Partial<TableState>) => void;
-  sigunguOptions: string[];
   align: "left" | "right";
+  schools: School[];
 }
 
 const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPopover(
-  { col, state, patch, sigunguOptions, align }, ref,
+  { col, state, patch, align, schools }, ref,
 ) {
   return (
     <div
@@ -331,65 +408,29 @@ const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPo
     >
       {col.filterType === "text" && (
         <div>
-          <label className="text-xs text-slate-500 block mb-1">학교명 검색</label>
+          <label className="text-xs text-slate-500 block mb-1">{col.label} 포함 검색</label>
           <input
             type="text"
             autoFocus
             value={state.textFilters[col.key] ?? ""}
             onChange={(e) => patch({ textFilters: { ...state.textFilters, [col.key]: e.target.value } })}
-            placeholder="예: 청심, 휘문..."
+            placeholder={
+              col.key === "schoolName" ? "예: 청심, 휘문, 영훈..." :
+              col.key === "si"         ? "예: 강남, 수원, 분당..." :
+              col.key === "gu"         ? "예: 영통, 수지, 분당..." :
+              "검색어"
+            }
             className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
           />
         </div>
       )}
 
-      {col.filterType === "loc" && (
-        <div className="space-y-2">
-          <div>
-            <label className="text-xs text-slate-500 block mb-1">시도</label>
-            <select
-              value={state.loc.sido}
-              onChange={(e) => patch({ loc: { sido: e.target.value as SidoPreset, sigungu: [] } })}
-              className="rounded border border-slate-300 px-2 py-1 text-sm bg-white w-full"
-            >
-              {SIDO_PRESETS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          {sigunguOptions.length > 0 && (
-            <div>
-              <label className="text-xs text-slate-500 block mb-1">
-                시군구 다중 선택 {state.loc.sigungu.length > 0 && `(${state.loc.sigungu.length})`}
-              </label>
-              <div className="flex flex-wrap gap-1 max-h-52 overflow-y-auto p-0.5">
-                {sigunguOptions.map((name) => {
-                  const on = state.loc.sigungu.includes(name);
-                  return (
-                    <button
-                      key={name}
-                      onClick={() => {
-                        const next = on ? state.loc.sigungu.filter((x) => x !== name) : [...state.loc.sigungu, name];
-                        patch({ loc: { ...state.loc, sigungu: next } });
-                      }}
-                      className={`text-xs px-2 py-0.5 rounded-full border transition ${on ? "bg-brand-600 border-brand-600 text-white" : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"}`}
-                    >
-                      {name}
-                    </button>
-                  );
-                })}
-              </div>
-              {state.loc.sigungu.length > 0 && (
-                <button
-                  onClick={() => patch({ loc: { ...state.loc, sigungu: [] } })}
-                  className="mt-1 text-xs text-slate-500 hover:underline"
-                >시군구 해제</button>
-              )}
-            </div>
-          )}
-        </div>
+      {col.filterType === "chip" && (
+        <ChipFilterBody col={col} state={state} patch={patch} schools={schools} />
       )}
 
       {col.filterType === "range" && (
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-[220px]">
           <label className="text-xs text-slate-500 block">{col.label} 범위</label>
           <div className="flex items-center gap-2 text-sm">
             <input
@@ -429,3 +470,87 @@ const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPo
     </div>
   );
 });
+
+// ─── chip multi 필터 (시·구 등) ───────────────────────────────────────────
+function ChipFilterBody({
+  col, state, patch, schools,
+}: {
+  col: Col;
+  state: TableState;
+  patch: (p: Partial<TableState>) => void;
+  schools: School[];
+}) {
+  const [query, setQuery] = useState("");
+  const selected = state.chipFilters[col.key] ?? [];
+
+  const pool = useMemo(() => {
+    const set = new Set<string>();
+    if (col.key === "gu") {
+      // 시 필터 활성 시 그 시들의 구만 노출 (cascading)
+      const siChips = state.chipFilters["si"] ?? [];
+      const siActive = siChips.length > 0;
+      const siSet = new Set(siChips);
+      for (const s of schools) {
+        if (siActive && !siSet.has(siOf(s))) continue;
+        const g = guOf(s);
+        if (g) set.add(g);
+      }
+    } else {
+      for (const s of schools) {
+        const v = String(col.get(s));
+        if (v) set.add(v);
+      }
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "ko"));
+  }, [col, schools, state.chipFilters]);
+
+  const q = query.trim();
+  const matched = q ? pool.filter((o) => o.includes(q)) : pool;
+
+  return (
+    <div className="space-y-2 min-w-[260px] max-w-[320px]">
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-slate-500">
+          {col.label} 선택 {selected.length > 0 && `(${selected.length} / ${pool.length})`}
+        </label>
+        {selected.length > 0 && (
+          <button
+            onClick={() => patch({ chipFilters: { ...state.chipFilters, [col.key]: [] } })}
+            className="text-[10px] text-slate-500 hover:underline"
+          >해제</button>
+        )}
+      </div>
+      <input
+        type="text"
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={col.key === "si" ? "검색: 수원, 강남, 분당…" : "검색: 영통, 분당, 수지…"}
+        className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+      />
+      <div className="flex flex-wrap gap-1 max-h-56 overflow-y-auto p-0.5">
+        {matched.length === 0 ? (
+          <span className="text-xs text-slate-400 px-1">매치 없음</span>
+        ) : matched.map((opt) => {
+          const on = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              onClick={() => {
+                const next = on ? selected.filter((x) => x !== opt) : [...selected, opt];
+                patch({ chipFilters: { ...state.chipFilters, [col.key]: next } });
+              }}
+              className={`text-xs px-2 py-0.5 rounded-full border transition ${
+                on
+                  ? "bg-brand-600 border-brand-600 text-white"
+                  : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

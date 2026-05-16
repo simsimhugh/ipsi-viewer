@@ -81,9 +81,16 @@ function emptyRow(): CareerRow {
 }
 
 /** caption "졸업자 진로 현황 (진학·취업·기타)" ~ </table>까지 슬라이스 */
+export class CareerTableMissingError extends Error {
+  constructor() {
+    super("졸업자 진로 현황 표를 찾을 수 없음 (졸업생 없음 또는 옛 연도 형식)");
+    this.name = "CareerTableMissingError";
+  }
+}
+
 function extractSecondTable(html: string): string {
   const start = html.indexOf("졸업자 진로 현황");
-  if (start < 0) throw new Error("졸업자 진로 현황 표를 찾을 수 없음");
+  if (start < 0) throw new CareerTableMissingError();
   // 그 위치의 <table>까지 거슬러 올라가서 슬라이스 시작
   const tableStart = html.lastIndexOf("<table", start);
   const tableEnd = html.indexOf("</table>", start);
