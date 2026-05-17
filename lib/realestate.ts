@@ -6,9 +6,13 @@
  */
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_ANON);
+// 모듈 레벨 상수 대신 함수 호출 시점에 읽어 build-time 고정 방지
+function getSupabaseClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) return null;
+  return createClient(url, anon, { auth: { persistSession: false } });
+}
 
 export interface ApartmentSummary {
   id: number;
@@ -53,8 +57,8 @@ function median(nums: number[]): number | null {
  * 데이터 없거나 테이블 미존재 시 [] 반환 (graceful).
  */
 export async function loadApartmentsForSchool(shlIdfCd: string): Promise<ApartmentSummary[]> {
-  if (!USE_SUPABASE) return [];
-  const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!, { auth: { persistSession: false } });
+  const sb = getSupabaseClient();
+  if (!sb) return [];
 
   // 1) 매핑 + 단지 정보
   const { data: asm, error: asmErr } = await sb
