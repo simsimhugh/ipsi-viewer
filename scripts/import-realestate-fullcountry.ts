@@ -1,15 +1,23 @@
 /**
- * 전국 부동산 적재 파이프라인.
+ * 전국 부동산 적재 파이프라인 (perf-optimized).
  *
  * 입력: ~/hakgun-data/realestate/fullcountry/<YYYYMM>-<lawd>-<type>.jsonl
  *   (run-realestate-fullcountry.ts 결과)
  *
  * 단계:
  *   [1] 모든 jsonl 로드 → unique 단지 (apt_name + sigungu) 추출
- *   [2] 카카오 지오코딩 (cache hit 활용) → apartments-geocoded.cache.jsonl
- *   [3] Supabase apartments upsert (신규만)
- *   [4] Supabase transactions upsert (chunk 500)
- *   [5] Supabase rentals upsert (chunk 500)
+ *       단, realestate_runs에 이미 적재된 (lawd_cd, deal_ym, type)은 skip
+ *   [2] 카카오 지오코딩 — 워커 8 병렬 (cache hit 우선)
+ *   [3] Supabase apartments upsert (ON CONFLICT name+sigungu DO NOTHING)
+ *   [4] Supabase transactions insert (chunk 1500, ON CONFLICT DO NOTHING)
+ *   [5] Supabase rentals insert (chunk 1500, ON CONFLICT DO NOTHING)
+ *   [6] realestate_runs 기록 (lawd_cd, deal_ym, type) — 다음 실행 시 skip
+ *
+ * 사전 적용 필요 (SQL Editor 1회):
+ *   - apartments UNIQUE (name, coalesce(sigungu,''))
+ *   - transactions_dedup_uidx, rentals_dedup_uidx
+ *   - realestate_runs 테이블
+ *   (supabase/schema.sql 하단 블록 참조)
  *
  * 환경:
  *   PUBLIC_DATA_API_KEY, KAKAO_REST_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -19,6 +27,9 @@
  *   --skip-tx       : transactions 단계 skip
  *   --skip-rent     : rentals 단계 skip
  *   --geocode-only  : apartments / 지오코딩까지만
+ *   --geo-workers N : 카카오 동시 워커 (기본 8)
+ *   --chunk N       : Supabase insert 청크 (기본 1500)
+ *   --force         : realestate_runs 무시하고 전체 재적재
  *
  * 사용:
  *   tsx scripts/import-realestate-fullcountry.ts
@@ -123,7 +134,16 @@ async function loadJsonl<T>(file: string): Promise<T[]> {
   return out;
 }
 
-async function loadAllRecords(): Promise<AnyRecord[]> {
+interface RunKey { lawd_cd: string; deal_ym: string; type: "trade" | "rent" }
+
+/** 파일명 <YYYYMM>-<lawd>-<type>.jsonl 파싱. */
+function parseFcFilename(f: string): RunKey | null {
+  const m = /^(\d{6})-(\d{5})-(trade|rent)\.jsonl$/.exec(f);
+  if (!m) return null;
+  return { deal_ym: m[1], lawd_cd: m[2], type: m[3] as "trade" | "rent" };
+}
+
+async function loadFullcountryFiles(skipKeys: Set<string>): Promise<{ records: AnyRecord[]; processedKeys: RunKey[] }> {
   let files: string[];
   try {
     files = await readdir(FC_DIR);
@@ -132,17 +152,26 @@ async function loadAllRecords(): Promise<AnyRecord[]> {
     process.exit(1);
   }
   const jsonlFiles = files.filter((f) => f.endsWith(".jsonl")).sort();
-  console.log(`  jsonl 파일: ${jsonlFiles.length}개`);
+  console.log(`  jsonl 파일: ${jsonlFiles.length}개 (전체)`);
 
   const all: AnyRecord[] = [];
-  let done = 0;
+  const processed: RunKey[] = [];
+  let loaded = 0;
+  let skipped = 0;
   for (const f of jsonlFiles) {
+    const k = parseFcFilename(f);
+    if (k) {
+      const keyStr = `${k.lawd_cd}|${k.deal_ym}|${k.type}`;
+      if (skipKeys.has(keyStr)) { skipped++; continue; }
+    }
     const recs = await loadJsonl<AnyRecord>(path.join(FC_DIR, f));
     all.push(...recs);
-    done++;
-    if (done % 200 === 0) console.log(`  loaded ${done}/${jsonlFiles.length} files, records=${all.length}`);
+    if (k) processed.push(k);
+    loaded++;
+    if (loaded % 200 === 0) console.log(`  loaded ${loaded}/${jsonlFiles.length} files, records=${all.length}`);
   }
-  return all;
+  console.log(`  loaded ${loaded}, skipped(이미 적재됨)=${skipped}, records=${all.length}`);
+  return { records: all, processedKeys: processed };
 }
 
 // ─── 지오코딩 cache ────────────────────────────────────────────────────
@@ -161,6 +190,7 @@ async function loadCache(): Promise<Map<string, GeoRecord | null>> {
   return m;
 }
 
+/** append-only — 워커 동시 쓰기 안전성 위해 라인 한 번에 쓰기. */
 async function appendCacheLine(entry: CacheEntry): Promise<void> {
   await writeFile(GEO_CACHE, JSON.stringify(entry) + "\n", { encoding: "utf-8", flag: "a" });
 }
@@ -231,14 +261,14 @@ async function geocodeOne(u: UniqApt): Promise<GeoRecord | null> {
       const doc = await kakaoKeyword(q);
       if (doc) return docToGeo(doc, u, "kakao:keyword:road");
     } catch (e) { console.warn(`  keyword(road) [${u.apt_name}]: ${(e as Error).message}`); }
-    await sleep(150);
+    await sleep(80);
   }
   const q2 = [sido, u.sigungu, u.apt_name].filter(Boolean).join(" ");
   try {
     const doc = await kakaoKeyword(q2);
     if (doc) return docToGeo(doc, u, "kakao:keyword");
   } catch (e) { console.warn(`  keyword [${u.apt_name}]: ${(e as Error).message}`); }
-  await sleep(150);
+  await sleep(80);
   if (u.jibun) {
     const q3 = [sido, u.sigungu, u.jibun].filter(Boolean).join(" ");
     try {
@@ -249,12 +279,33 @@ async function geocodeOne(u: UniqApt): Promise<GeoRecord | null> {
   return null;
 }
 
+/** 워커 풀 — items를 N개 워커로 fan-out. */
+async function runWorkerPool<T>(items: T[], workers: number, fn: (t: T, idx: number) => Promise<void>): Promise<void> {
+  let cursor = 0;
+  const total = items.length;
+  async function loop() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= total) break;
+      try {
+        await fn(items[idx], idx);
+      } catch (e) {
+        console.warn(`  pool task ${idx} 실패: ${(e as Error).message}`);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, workers) }, () => loop()));
+}
+
 // ─── main ──────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
   const skipGeocode = hasFlag("skip-geocode");
   const skipTx = hasFlag("skip-tx");
   const skipRent = hasFlag("skip-rent");
   const geocodeOnly = hasFlag("geocode-only");
+  const force = hasFlag("force");
+  const geoWorkers = parseInt(arg("geo-workers") ?? "8");
+  const CHUNK = parseInt(arg("chunk") ?? "1500");
 
   const need: string[] = [];
   if (!SUPA_URL) need.push("SUPABASE_URL");
@@ -263,16 +314,39 @@ async function main(): Promise<void> {
   if (need.length) { console.error(`[import] env 누락: ${need.join(", ")}`); process.exit(1); }
 
   console.log(`[import-realestate-fullcountry]`);
-  console.log(`  옵션: skipGeocode=${skipGeocode} skipTx=${skipTx} skipRent=${skipRent} geocodeOnly=${geocodeOnly}`);
+  console.log(`  옵션: skipGeocode=${skipGeocode} skipTx=${skipTx} skipRent=${skipRent} geocodeOnly=${geocodeOnly} force=${force}`);
+  console.log(`  geoWorkers=${geoWorkers} chunk=${CHUNK}`);
 
   await mkdir(REAL_DIR, { recursive: true });
 
+  const sb = createClient(SUPA_URL!, SUPA_KEY!, { auth: { persistSession: false } });
+
+  // ─── [0] realestate_runs 로드 → 이미 적재된 (lawd_cd, ym, type) 집합 ─
+  const completedKeys = new Set<string>();
+  if (!force) {
+    const { data, error } = await sb.from("realestate_runs").select("lawd_cd,deal_ym,type");
+    if (error) {
+      // 테이블 미존재 시 — schema.sql 적용 전이면 warning 후 비우고 진행 (legacy 호환)
+      console.warn(`  [warn] realestate_runs 조회 실패 (스키마 미적용?): ${error.message}`);
+    } else if (data) {
+      for (const r of data as Array<{ lawd_cd: string; deal_ym: string; type: string }>) {
+        completedKeys.add(`${r.lawd_cd}|${r.deal_ym}|${r.type}`);
+      }
+      console.log(`  적재 이력(realestate_runs): ${completedKeys.size}건 — 해당 (lawd, ym, type) skip`);
+    }
+  }
+
   // ─── [1] 입력 로드 ───────────────────────────────────────────────────
-  console.log(`\n[1/5] jsonl 로드`);
-  const allRecs = await loadAllRecords();
+  console.log(`\n[1/6] jsonl 로드 (이미 적재된 파일 skip)`);
+  const { records: allRecs, processedKeys } = await loadFullcountryFiles(completedKeys);
   const trades = allRecs.filter((r): r is TradeRecord => r.type === "trade");
   const rents = allRecs.filter((r): r is RentRecord => r.type === "rent");
   console.log(`  trade=${trades.length}, rent=${rents.length}, total=${allRecs.length}`);
+
+  if (allRecs.length === 0) {
+    console.log(`\nOK 적재할 신규 데이터 없음 (전부 realestate_runs에 기록됨). --force로 강제 재적재 가능.`);
+    return;
+  }
 
   // ─── [2] unique 단지 추출 ────────────────────────────────────────────
   const uniqMap = new Map<string, UniqApt>();
@@ -297,62 +371,70 @@ async function main(): Promise<void> {
   }
   console.log(`  unique 단지: ${uniqMap.size}`);
 
-  // ─── [3] 지오코딩 (cache hit 우선) ────────────────────────────────────
-  console.log(`\n[2/5] 지오코딩 (cache hit 우선)`);
+  // ─── [3] 지오코딩 (cache hit 우선 + 신규는 워커 병렬) ────────────────
+  console.log(`\n[2/6] 지오코딩 (cache hit 우선, 신규는 워커 ${geoWorkers} 병렬)`);
   const cache = await loadCache();
   console.log(`  기존 cache: ${cache.size}건`);
 
-  const geocoded: GeoRecord[] = [];
-  let cacheHit = 0, kakaoCall = 0, okCount = 0, failCount = 0;
-  let idx = 0;
-  for (const u of uniqMap.values()) {
-    idx++;
+  const uniqList = Array.from(uniqMap.values());
+
+  // 먼저 cache hit / miss 분리
+  const cacheHits: GeoRecord[] = [];
+  const needLookup: UniqApt[] = [];
+  let cacheHitCount = 0;
+  for (const u of uniqList) {
     const key = `${u.apt_name}||${u.sigungu}`;
-    let result: GeoRecord | null;
     if (cache.has(key)) {
-      result = cache.get(key) ?? null;
-      cacheHit++;
-    } else if (skipGeocode) {
-      result = null;
+      const r = cache.get(key) ?? null;
+      cacheHitCount++;
+      if (r && r.lat != null && r.lng != null) cacheHits.push(r);
     } else {
+      needLookup.push(u);
+    }
+  }
+  console.log(`  cacheHit=${cacheHitCount}, 신규 lookup 대상=${needLookup.length}`);
+
+  const newlyGeo: GeoRecord[] = [];
+  let kakaoCall = 0, newOk = 0, newFail = 0;
+
+  if (!skipGeocode && needLookup.length > 0 && KAKAO_KEY) {
+    const startedAt = Date.now();
+    await runWorkerPool(needLookup, geoWorkers, async (u, idx) => {
+      let result: GeoRecord | null = null;
       try {
         result = await geocodeOne(u);
       } catch (e) {
         console.warn(`  [${idx}] ${u.apt_name}: ${(e as Error).message}`);
-        result = null;
       }
       kakaoCall++;
       await appendCacheLine({ name: u.apt_name, sigungu: u.sigungu, result });
-      cache.set(key, result);
-      await sleep(120);
-    }
-    if (result && result.lat != null && result.lng != null) {
-      geocoded.push(result);
-      okCount++;
-    } else {
-      failCount++;
-    }
-    if (idx % 500 === 0) console.log(`  [${idx}/${uniqMap.size}] cacheHit=${cacheHit} kakao=${kakaoCall} ok=${okCount} fail=${failCount}`);
+      cache.set(`${u.apt_name}||${u.sigungu}`, result);
+      if (result && result.lat != null && result.lng != null) {
+        newlyGeo.push(result);
+        newOk++;
+      } else {
+        newFail++;
+      }
+      // jitter 100~250ms — 워커 8 × 175ms ≒ ~45 RPS, 카카오 일일 30만 안전.
+      await sleep(100 + Math.random() * 150);
+      if (((idx + 1) % 500) === 0) {
+        const elapsed = (Date.now() - startedAt) / 1000;
+        const rate = (idx + 1) / Math.max(elapsed, 0.001);
+        const eta = (needLookup.length - idx - 1) / Math.max(rate, 0.001);
+        console.log(`  [${idx + 1}/${needLookup.length}] ok=${newOk} fail=${newFail} elapsed=${Math.round(elapsed)}s ETA=${Math.round(eta / 60)}min`);
+      }
+    });
+  } else if (skipGeocode) {
+    console.log(`  skipGeocode=true — 신규 ${needLookup.length}건 좌표 없음`);
   }
-  console.log(`  지오코딩 결과: ok=${okCount} fail=${failCount} cacheHit=${cacheHit} kakaoCall=${kakaoCall}`);
 
-  // ─── [4] Supabase apartments upsert ──────────────────────────────────
-  console.log(`\n[3/5] Supabase apartments upsert`);
-  const sb = createClient(SUPA_URL!, SUPA_KEY!, { auth: { persistSession: false } });
+  const geocoded: GeoRecord[] = [...cacheHits, ...newlyGeo];
+  console.log(`  지오코딩 결과: 좌표 보유=${geocoded.length} (cacheHit=${cacheHits.length} + newOk=${newOk}), newFail=${newFail}, kakaoCall=${kakaoCall}`);
 
-  const existing = new Map<string, number>();
-  const PAGE = 1000;
-  for (let off = 0; ; off += PAGE) {
-    const { data, error } = await sb.from("apartments").select("id,name,sigungu").range(off, off + PAGE - 1);
-    if (error) throw new Error(`apartments select: ${error.message}`);
-    if (!data || data.length === 0) break;
-    for (const r of data as Array<{ id: number; name: string; sigungu: string | null }>) {
-      existing.set(`${r.name}||${r.sigungu ?? ""}`, r.id);
-    }
-    if (data.length < PAGE) break;
-  }
-  console.log(`  기존 apartments: ${existing.size}건`);
+  // ─── [4] apartments upsert (ON CONFLICT DO NOTHING) ──────────────────
+  console.log(`\n[3/6] apartments upsert (ON CONFLICT name+sigungu DO NOTHING)`);
 
+  // 신규 후보 dedup (name+sigungu)
   const dedupedKeys = new Set<string>();
   const toInsert: Array<{
     name: string; sigungu: string | null; road_address: string | null;
@@ -363,7 +445,6 @@ async function main(): Promise<void> {
     const k = `${g.name}||${g.sigungu ?? ""}`;
     if (dedupedKeys.has(k)) continue;
     dedupedKeys.add(k);
-    if (existing.has(k)) continue;
     toInsert.push({
       name: g.name,
       sigungu: g.sigungu || null,
@@ -375,28 +456,46 @@ async function main(): Promise<void> {
       source: g.source,
     });
   }
-  console.log(`  신규 insert: ${toInsert.length}건`);
+  console.log(`  upsert 후보: ${toInsert.length}건 (중복 제거 후)`);
 
-  const aptIdByKey = new Map<string, number>(existing);
-  const CHUNK = 500;
   for (let i = 0; i < toInsert.length; i += CHUNK) {
     const chunk = toInsert.slice(i, i + CHUNK);
-    const { data, error } = await sb.from("apartments").insert(chunk).select("id,name,sigungu");
-    if (error) throw new Error(`apartments insert: ${error.message}`);
-    for (const r of (data ?? []) as Array<{ id: number; name: string; sigungu: string | null }>) {
+    const { error } = await sb
+      .from("apartments")
+      .upsert(chunk, { onConflict: "name,sigungu", ignoreDuplicates: true });
+    if (error) {
+      // ON CONFLICT 키가 없으면 fallback 시도 (기존 동작: 신규 insert만, dup은 error로 떨어질 수도)
+      console.warn(`  [warn] apartments upsert (onConflict) 실패: ${error.message} — fallback insert (ignore dup)`);
+      const { error: e2 } = await sb.from("apartments").insert(chunk);
+      if (e2 && !/duplicate/i.test(e2.message)) throw new Error(`apartments insert: ${e2.message}`);
+    }
+    if (((i / CHUNK) % 5) === 0) console.log(`  apartments ${Math.min(i + chunk.length, toInsert.length)}/${toInsert.length}`);
+  }
+
+  // 적재된 apartments id 조회 (geocoded 키만 — 전체 select 회피)
+  console.log(`  apartments id 조회중...`);
+  const aptIdByKey = new Map<string, number>();
+  // sigungu 기준 페이지네이션 — 단순히 전체 select. (전국 5만+α, 1~2초)
+  const PAGE = 1000;
+  for (let off = 0; ; off += PAGE) {
+    const { data, error } = await sb.from("apartments").select("id,name,sigungu").range(off, off + PAGE - 1);
+    if (error) throw new Error(`apartments select: ${error.message}`);
+    if (!data || data.length === 0) break;
+    for (const r of data as Array<{ id: number; name: string; sigungu: string | null }>) {
       aptIdByKey.set(`${r.name}||${r.sigungu ?? ""}`, r.id);
     }
-    console.log(`  apartments insert ${Math.min(i + chunk.length, toInsert.length)}/${toInsert.length}`);
+    if (data.length < PAGE) break;
   }
+  console.log(`  apartments id 매핑: ${aptIdByKey.size}건`);
 
   if (geocodeOnly) {
     console.log(`\nOK geocodeOnly — apartments 적재까지 완료`);
     return;
   }
 
-  // ─── [5a] transactions upsert ────────────────────────────────────────
+  // ─── [5a] transactions insert (idempotent — ON CONFLICT DO NOTHING) ──
   if (!skipTx) {
-    console.log(`\n[4/5] transactions insert (truncate-and-insert)`);
+    console.log(`\n[4/6] transactions insert (ON CONFLICT dedup DO NOTHING, chunk=${CHUNK})`);
     type TxRow = {
       apt_id: number; area_m2: number | null; price_won: number | null;
       contract_date: string; floor: number | null; source: string;
@@ -417,22 +516,24 @@ async function main(): Promise<void> {
     }
     console.log(`  매칭됨: ${txRows.length}, 미매칭(좌표/단지 없음): ${txUnmatched}`);
 
-    console.log(`  기존 transactions 삭제...`);
-    const { error: delErr } = await sb.from("transactions").delete().gte("contract_date", "1900-01-01");
-    if (delErr) console.warn(`  delete: ${delErr.message}`);
-
     for (let i = 0; i < txRows.length; i += CHUNK) {
       const chunk = txRows.slice(i, i + CHUNK);
-      const { error } = await sb.from("transactions").insert(chunk);
-      if (error) throw new Error(`transactions insert (${i}): ${error.message}`);
-      if ((i / CHUNK) % 20 === 0) console.log(`  tx ${Math.min(i + chunk.length, txRows.length)}/${txRows.length}`);
+      const { error } = await sb
+        .from("transactions")
+        .upsert(chunk, { onConflict: "apt_id,contract_date,area_m2,floor,price_won", ignoreDuplicates: true });
+      if (error) {
+        console.warn(`  [warn] tx upsert 실패: ${error.message} — fallback insert`);
+        const { error: e2 } = await sb.from("transactions").insert(chunk);
+        if (e2 && !/duplicate/i.test(e2.message)) throw new Error(`transactions insert (${i}): ${e2.message}`);
+      }
+      if (((i / CHUNK) % 10) === 0) console.log(`  tx ${Math.min(i + chunk.length, txRows.length)}/${txRows.length}`);
     }
-    console.log(`  ✓ transactions ${txRows.length}건 적재`);
+    console.log(`  OK transactions ${txRows.length}건 처리`);
   }
 
-  // ─── [5b] rentals upsert ─────────────────────────────────────────────
+  // ─── [5b] rentals insert (idempotent) ────────────────────────────────
   if (!skipRent) {
-    console.log(`\n[5/5] rentals insert (truncate-and-insert)`);
+    console.log(`\n[5/6] rentals insert (ON CONFLICT dedup DO NOTHING, chunk=${CHUNK})`);
     type RentRow = {
       apt_id: number; area_m2: number | null;
       deposit_man_won: number | null; monthly_rent_man_won: number | null;
@@ -455,21 +556,52 @@ async function main(): Promise<void> {
     }
     console.log(`  매칭됨: ${rentRows.length}, 미매칭: ${rentUnmatched}`);
 
-    console.log(`  기존 rentals 삭제...`);
-    const { error: delErr } = await sb.from("rentals").delete().gte("contract_date", "1900-01-01");
-    if (delErr) console.warn(`  delete: ${delErr.message}`);
-
     for (let i = 0; i < rentRows.length; i += CHUNK) {
       const chunk = rentRows.slice(i, i + CHUNK);
-      const { error } = await sb.from("rentals").insert(chunk);
-      if (error) throw new Error(`rentals insert (${i}): ${error.message}`);
-      if ((i / CHUNK) % 20 === 0) console.log(`  rent ${Math.min(i + chunk.length, rentRows.length)}/${rentRows.length}`);
+      const { error } = await sb
+        .from("rentals")
+        .upsert(chunk, { onConflict: "apt_id,contract_date,area_m2,floor,deposit_man_won,monthly_rent_man_won", ignoreDuplicates: true });
+      if (error) {
+        console.warn(`  [warn] rent upsert 실패: ${error.message} — fallback insert`);
+        const { error: e2 } = await sb.from("rentals").insert(chunk);
+        if (e2 && !/duplicate/i.test(e2.message)) throw new Error(`rentals insert (${i}): ${e2.message}`);
+      }
+      if (((i / CHUNK) % 10) === 0) console.log(`  rent ${Math.min(i + chunk.length, rentRows.length)}/${rentRows.length}`);
     }
-    console.log(`  ✓ rentals ${rentRows.length}건 적재`);
+    console.log(`  OK rentals ${rentRows.length}건 처리`);
+  }
+
+  // ─── [6] realestate_runs 기록 ─────────────────────────────────────────
+  console.log(`\n[6/6] realestate_runs 기록 (${processedKeys.length}건)`);
+  if (processedKeys.length > 0) {
+    // counts per (lawd, ym, type)
+    const counts = new Map<string, number>();
+    for (const r of allRecs) {
+      const k = `${r.lawd_cd}|${r.deal_ym}|${r.type}`;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    const rows = processedKeys.map((k) => ({
+      lawd_cd: k.lawd_cd,
+      deal_ym: k.deal_ym,
+      type: k.type,
+      records: counts.get(`${k.lawd_cd}|${k.deal_ym}|${k.type}`) ?? 0,
+    }));
+    const RUN_CHUNK = 500;
+    for (let i = 0; i < rows.length; i += RUN_CHUNK) {
+      const chunk = rows.slice(i, i + RUN_CHUNK);
+      const { error } = await sb
+        .from("realestate_runs")
+        .upsert(chunk, { onConflict: "lawd_cd,deal_ym,type" });
+      if (error) {
+        console.warn(`  [warn] realestate_runs upsert 실패 (스키마 미적용?): ${error.message}`);
+        break;
+      }
+    }
+    console.log(`  OK realestate_runs 기록 완료`);
   }
 
   console.log(`\nOK 완료`);
-  console.log(`  apartments 신규: ${toInsert.length}, 총 기존+신규: ${aptIdByKey.size}`);
+  console.log(`  apartments upsert 후보: ${toInsert.length}, 총 id 매핑: ${aptIdByKey.size}`);
 }
 
 if (process.argv[1]?.endsWith("/import-realestate-fullcountry.ts")) {

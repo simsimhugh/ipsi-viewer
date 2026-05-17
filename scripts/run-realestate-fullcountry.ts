@@ -15,10 +15,10 @@
  *   --recent <N>                   : 최근 N개월 (기본 12)
  *   --type <trade|rent|both>       : 기본 both
  *   --lawd-filter <a,b,c>          : 일부 시·군·구 코드만
- *   --workers <N>                  : 기본 5
+ *   --workers <N>                  : 기본 8
  *
  * 사용:
- *   tsx scripts/run-realestate-fullcountry.ts --recent 12 --type both --workers 5
+ *   tsx scripts/run-realestate-fullcountry.ts --recent 12 --type both --workers 8
  */
 import { mkdir, writeFile, access, stat } from "node:fs/promises";
 import { readFileSync, existsSync } from "node:fs";
@@ -281,8 +281,8 @@ async function runWorkerPool<T>(items: T[], workers: number, fn: (t: T, idx: num
       } catch (e) {
         console.warn(`  task ${idx} 실패: ${(e as Error).message}`);
       }
-      // jitter 200~500ms
-      await sleep(200 + Math.random() * 300);
+      // jitter 100~300ms — 워커 8 기준 ~40 RPS 수준
+      await sleep(100 + Math.random() * 200);
       if (((idx + 1) % 50) === 0) {
         const elapsed = (Date.now() - startedAt) / 1000;
         const rate = (idx + 1) / elapsed;
@@ -305,7 +305,7 @@ async function main(): Promise<void> {
   const recentArg = arg("recent");
   const typeArg = (arg("type") ?? "both") as "trade" | "rent" | "both";
   const lawdFilterArg = arg("lawd-filter");
-  const workers = parseInt(arg("workers") ?? "5");
+  const workers = parseInt(arg("workers") ?? "8");
 
   const months: string[] = monthsArg
     ? monthsArg.split(",").map((s) => s.trim()).filter(Boolean)

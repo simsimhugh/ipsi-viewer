@@ -1,10 +1,12 @@
 /**
  * apartments × schools 매핑 → apartment_school_map 적재.
  *
- * 두 가지 mode:
+ * 세 가지 mode:
  *   --mode pip      : school_districts 폴리곤 in (가장 정확). scripts/poc-pip.ts 재사용.
- *   --mode radius   : 학교 좌표 기준 반경 내 (district 없을 때 MVP).
+ *   --mode radius   : 학교 좌표 기준 반경 내 (Node 측 in-memory Haversine, 느림).
  *       추가 옵션: --km <number>  (기본 1.0)
+ *   --mode sql      : Supabase RPC rpc_map_apartments_radius로 DB에서 한 번에 매핑.
+ *       추가 옵션: --km <number>  (기본 1.0). 사전에 supabase/schema.sql 적용 필요.
  *
  * 환경변수:
  *   SUPABASE_URL              — Supabase URL
@@ -12,11 +14,7 @@
  *
  * 사용:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
- *     tsx scripts/map-apartments.ts --mode radius --km 1
- *
- * TODO: 자료 도착 후
- *   - mode=pip: school_districts 적재 완료 후 활성화
- *   - mode=radius: apartments 좌표 적재 완료 후 활성화 (MVP 우선 경로)
+ *     tsx scripts/map-apartments.ts --mode sql --km 1
  */
 import { createClient } from "@supabase/supabase-js";
 import { pointInPolygon } from "./poc-pip.js";
@@ -154,21 +152,39 @@ async function batchUpsert(sb: ReturnType<typeof createClient>, rows: MapRow[], 
   }
 }
 
+async function modeSql(sb: ReturnType<typeof createClient>, km: number): Promise<number> {
+  // rpc_map_apartments_radius — bounding box pre-filter + Haversine + upsert.
+  // 사전 적용 필요: supabase/schema.sql 하단의 rpc_map_apartments_radius 함수.
+  const startedAt = Date.now();
+  const { data, error } = await sb.rpc("rpc_map_apartments_radius", { p_km: km });
+  if (error) throw new Error(`rpc_map_apartments_radius: ${error.message}`);
+  const elapsed = (Date.now() - startedAt) / 1000;
+  const inserted = typeof data === "number" ? data : Number(data);
+  console.log(`  RPC 실행 완료: inserted/updated=${inserted}, elapsed=${Math.round(elapsed)}s`);
+  return inserted;
+}
+
 async function main() {
   if (!URL || !KEY) {
     console.error("[map-apartments] SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY 필요 — graceful exit.");
     process.exit(0);
   }
-  const mode = arg("mode") ?? "radius";
+  const mode = arg("mode") ?? "sql";
   const km   = Number(arg("km") ?? "1");
 
   const sb = createClient(URL, KEY, { auth: { persistSession: false } });
-  console.log(`[map-apartments] mode=${mode}${mode === "radius" ? ` km=${km}` : ""}`);
+  console.log(`[map-apartments] mode=${mode}${mode === "radius" || mode === "sql" ? ` km=${km}` : ""}`);
+
+  if (mode === "sql") {
+    await modeSql(sb, km);
+    console.log("OK 완료");
+    return;
+  }
 
   let rows: MapRow[];
   if (mode === "pip") rows = await modePip(sb);
   else if (mode === "radius") rows = await modeRadius(sb, km);
-  else { console.error(`unknown mode: ${mode} (pip|radius)`); process.exit(1); }
+  else { console.error(`unknown mode: ${mode} (pip|radius|sql)`); process.exit(1); }
 
   if (rows.length === 0) {
     console.log("매핑 결과 0건 — 입력 데이터 부족 (apartments 또는 school_districts 미적재).");
@@ -176,7 +192,7 @@ async function main() {
   }
   console.log(`매핑 결과 ${rows.length}건 — upsert 시작`);
   await batchUpsert(sb, rows);
-  console.log("✅ 완료");
+  console.log("OK 완료");
 }
 
 if (process.argv[1]?.endsWith("/map-apartments.ts")) {
