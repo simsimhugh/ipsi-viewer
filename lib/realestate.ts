@@ -6,8 +6,11 @@
  *   - 최근 전세 1건 (rentals where monthly_rent_man_won = 0)
  *   - 최근 월세 1건 (rentals where monthly_rent_man_won > 0)
  *
- * 표시 방식: 단지마다 dealType별 가장 최근 contract_date 거래 1건 노출.
- * 중위값 계산 제거 — 단순 "최근" 시그널 우선 (UX 단순화).
+ * 표시 방식: 단지마다 **주력 평수(대표 면적)** 의 dealType별 가장 최근 1건.
+ *   주력 평수 = transactions + rentals 통합 round(area_m2) group by count desc.
+ *   동률 시 면적 큰 쪽 우선 (count desc, area desc).
+ *   여러 평수가 섞인 단지(예: 반포자이 60·85·132·165·195·216·245㎡)에서
+ *   가장 거래 빈도 높은 평수의 시세만 노출 → 시세 인식 왜곡 방지.
  * 데이터 없는 단지/거래유형은 null 반환 → UI에서 "-" 표시.
  */
 import { createClient } from "@supabase/supabase-js";
@@ -131,11 +134,48 @@ export async function loadApartmentsForSchool(shlIdfCd: string): Promise<Apartme
   const rentRows = (rentErr ? [] : (rent ?? [])) as unknown as RentRow[];
   if (rentErr) console.warn(`[realestate] rentals: ${rentErr.message}`);
 
-  // apt_id → 최근 매매 (이미 desc 정렬 — 첫 hit 사용)
+  // 4) 단지별 대표 평수 = round(area_m2) group by count desc, area desc
+  //    transactions + rentals 통합 집계. 동률 시 면적 큰 쪽 우선.
+  const areaCountByApt = new Map<number, Map<number, number>>();
+  function bumpArea(aptId: number, areaM2: number | null) {
+    if (areaM2 == null) return;
+    const k = Math.round(areaM2);
+    let inner = areaCountByApt.get(aptId);
+    if (!inner) {
+      inner = new Map<number, number>();
+      areaCountByApt.set(aptId, inner);
+    }
+    inner.set(k, (inner.get(k) ?? 0) + 1);
+  }
+  for (const t of txRows) bumpArea(t.apt_id, t.area_m2);
+  for (const r of rentRows) bumpArea(r.apt_id, r.area_m2);
+
+  const repAreaByApt = new Map<number, number>();
+  for (const [aptId, counts] of areaCountByApt) {
+    let bestArea = -Infinity;
+    let bestCount = -1;
+    for (const [area, count] of counts) {
+      if (count > bestCount || (count === bestCount && area > bestArea)) {
+        bestArea = area;
+        bestCount = count;
+      }
+    }
+    if (Number.isFinite(bestArea)) repAreaByApt.set(aptId, bestArea);
+  }
+
+  function matchesRep(aptId: number, areaM2: number | null): boolean {
+    const rep = repAreaByApt.get(aptId);
+    if (rep == null) return false;
+    if (areaM2 == null) return false;
+    return Math.round(areaM2) === rep;
+  }
+
+  // apt_id → 최근 매매 (이미 desc 정렬 — 대표 평수 첫 hit 사용)
   const saleByApt = new Map<number, SaleLatest>();
   for (const t of txRows) {
     if (saleByApt.has(t.apt_id)) continue;
     if (t.price_won == null || !t.contract_date) continue;
+    if (!matchesRep(t.apt_id, t.area_m2)) continue;
     saleByApt.set(t.apt_id, {
       priceWon: t.price_won,
       areaM2: t.area_m2,
@@ -143,11 +183,12 @@ export async function loadApartmentsForSchool(shlIdfCd: string): Promise<Apartme
     });
   }
 
-  // apt_id → 최근 전세 / 최근 월세
+  // apt_id → 최근 전세 / 최근 월세 (대표 평수 안에서)
   const jeonseByApt = new Map<number, JeonseLatest>();
   const wolseByApt = new Map<number, WolseLatest>();
   for (const r of rentRows) {
     if (!r.contract_date || r.deposit_man_won == null) continue;
+    if (!matchesRep(r.apt_id, r.area_m2)) continue;
     const isWolse = (r.monthly_rent_man_won ?? 0) > 0;
     if (isWolse) {
       if (wolseByApt.has(r.apt_id)) continue;
