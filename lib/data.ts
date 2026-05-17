@@ -222,3 +222,41 @@ export async function loadSchool(SHL_IDF_CD: string): Promise<School | null> {
   const all = await loadAllSchools();
   return all.find((s) => s.SHL_IDF_CD === SHL_IDF_CD) ?? null;
 }
+
+/**
+ * 학교 상세 페이지 전용 — 학교 1건 + 해당 학교 careers 1건만 fetch.
+ * 13k schools / 수만 careers 전량 page-fetch 회피 → cold TTFB 대폭 축소.
+ * Supabase 모드 전용 — JSONL fallback은 기존 loadSchool 유지.
+ */
+export async function loadSchoolById(SHL_IDF_CD: string): Promise<School | null> {
+  if (!USE_SUPABASE) return loadSchool(SHL_IDF_CD);
+
+  const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!, { auth: { persistSession: false } });
+  const [schoolRes, careersRes] = await Promise.all([
+    sb.from("schools").select("*").eq("shl_idf_cd", SHL_IDF_CD).maybeSingle(),
+    sb.from("careers").select("*").eq("shl_idf_cd", SHL_IDF_CD),
+  ]);
+
+  if (schoolRes.error) throw new Error(`schools(${SHL_IDF_CD}): ${schoolRes.error.message}`);
+  const s = schoolRes.data as SchoolRowSB | null;
+  if (!s) return null;
+
+  const careers = (careersRes.error ? [] : (careersRes.data ?? [])) as CareerRowFullSB[];
+  if (careersRes.error) console.warn(`[lib/data] careers(${SHL_IDF_CD}): ${careersRes.error.message}`);
+
+  const byYear: Record<string, CareerData> = {};
+  for (const c of careers) {
+    const total = totalFromSB(c);
+    byYear[String(c.year)] = {
+      year: c.year,
+      male: (c.male ?? total) as CareerRow,
+      female: (c.female ?? total) as CareerRow,
+      total,
+      ratePct: (c.rate_pct ?? total) as CareerRow,
+      totalGraduatesFromTable: c.graduates,
+    };
+  }
+
+  const [out] = schoolsFromSB([s], { [s.shl_idf_cd]: byYear });
+  return out ?? null;
+}

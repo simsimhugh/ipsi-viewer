@@ -1,17 +1,18 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { loadSchool } from "@/lib/data";
+import { loadSchoolById } from "@/lib/data";
 import { loadApartmentsForSchool } from "@/lib/realestate";
 import SchoolDetailView from "@/components/SchoolDetailView";
 import SchoolApartments from "@/components/SchoolApartments";
 
-// SSG 미사용 — 데이터 파일이 build 시점에 없을 수 있음 (CI 환경)
-export const dynamic = "force-dynamic";
+// ISR — cold TTFB 단축. 첫 요청만 SSR, 이후 5분간 캐시된 HTML 재사용.
+// 데이터 변경은 매월 sync라 5분 stale 허용.
+export const revalidate = 300;
 
 export default async function SchoolPage({ params }: { params: { shl: string } }) {
   const SHL = decodeURIComponent(params.shl);
   const [school, apartments] = await Promise.all([
-    loadSchool(SHL),
+    loadSchoolById(SHL),
     loadApartmentsForSchool(SHL),
   ]);
   if (!school) notFound();
