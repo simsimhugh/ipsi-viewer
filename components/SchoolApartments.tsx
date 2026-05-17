@@ -45,9 +45,13 @@ function fmtYearMonth(date: string): string {
   return date.slice(0, 7);
 }
 
-function naverRealEstateUrl(name: string, _sigungu: string | null): string {
-  // m.land.naver.com/search/result/<단지명> → 302로 단지 ID 페이지 자동 redirect.
-  // 매칭 실패 시 검색 결과 페이지로 (네이버 자체 fallback).
+function naverRealEstateUrl(name: string, _sigungu: string | null, naverComplexId: number | null): string {
+  // naver_complex_id가 있으면 단지 페이지 직링크 (batch 매핑 결과 — 정확).
+  if (naverComplexId != null) {
+    return `https://new.land.naver.com/complexes/${naverComplexId}`;
+  }
+  // fallback: m.land.naver.com/search/result/<단지명> → 302로 단지 ID 페이지 자동 redirect.
+  // 네이버 자체 redirect도 실패하면 검색 결과 페이지로.
   return `https://m.land.naver.com/search/result/${encodeURIComponent(name)}`;
 }
 
@@ -209,11 +213,11 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
                 <tr key={a.id} className="border-t border-slate-100">
                   <td className="px-3 py-1.5 text-slate-800">
                     <a
-                      href={naverRealEstateUrl(a.name, a.sigungu)}
+                      href={naverRealEstateUrl(a.name, a.sigungu, a.naverComplexId)}
                       target="_blank"
                       rel="noreferrer noopener"
                       className="text-brand-700 hover:underline"
-                      title="네이버에서 검색"
+                      title={a.naverComplexId != null ? "네이버 부동산 단지 페이지" : "네이버에서 검색"}
                     >
                       {a.name}
                     </a>

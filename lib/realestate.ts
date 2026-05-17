@@ -53,6 +53,8 @@ export interface ApartmentSummary {
   builtYear: number | null;
   distanceM: number | null;
   inDistrict: boolean;
+  /** 네이버 부동산 단지 ID — 있으면 단지명 클릭 시 단지 페이지로 직링크 */
+  naverComplexId: number | null;
   /** 최근 매매 1건 — 없으면 null */
   latestSale: SaleLatest | null;
   /** 최근 전세 1건 — 없으면 null */
@@ -71,6 +73,7 @@ interface AsmRow {
     sigungu: string | null;
     households: number | null;
     built_year: number | null;
+    naver_complex_id: number | null;
   } | null;
 }
 
@@ -100,7 +103,7 @@ export async function loadApartmentsForSchool(shlIdfCd: string): Promise<Apartme
   // 1) 매핑 + 단지 정보
   const { data: asm, error: asmErr } = await sb
     .from("apartment_school_map")
-    .select("apt_id, distance_m, in_district, apartments(id, name, sigungu, households, built_year)")
+    .select("apt_id, distance_m, in_district, apartments(id, name, sigungu, households, built_year, naver_complex_id)")
     .eq("shl_idf_cd", shlIdfCd);
 
   if (asmErr) {
@@ -218,6 +221,7 @@ export async function loadApartmentsForSchool(shlIdfCd: string): Promise<Apartme
       builtYear: r.apartments!.built_year,
       distanceM: r.distance_m,
       inDistrict: !!r.in_district,
+      naverComplexId: r.apartments!.naver_complex_id,
       latestSale: saleByApt.get(r.apt_id) ?? null,
       latestJeonse: jeonseByApt.get(r.apt_id) ?? null,
       latestWolse: wolseByApt.get(r.apt_id) ?? null,

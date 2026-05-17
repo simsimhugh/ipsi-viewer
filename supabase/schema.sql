@@ -144,20 +144,25 @@ create table if not exists school_districts (
 create index if not exists school_districts_shl_idx on school_districts(shl_idf_cd);
 
 -- 아파트 단지 (카카오 지오코딩 + 공공데이터)
+-- naver_complex_id: 네이버 부동산 단지 ID — m.land.naver.com/search/result/<name> HEAD redirect
+--   location 헤더의 /complex/info/<ID> 추출. scripts/naver-complex-mapping.ts batch로 채움.
+--   단지명 클릭 시 https://new.land.naver.com/complexes/<id> 직링크 사용.
 create table if not exists apartments (
-  id            bigserial primary key,
-  name          text not null,
-  sigungu       text,
-  road_address  text,
-  lat           double precision,
-  lng           double precision,
-  built_year    int,
-  households    int,
-  source        text,
-  updated_at    timestamptz not null default now()
+  id                bigserial primary key,
+  name              text not null,
+  sigungu           text,
+  road_address      text,
+  lat               double precision,
+  lng               double precision,
+  built_year        int,
+  households        int,
+  naver_complex_id  int,
+  source            text,
+  updated_at        timestamptz not null default now()
 );
 create index if not exists apartments_geo_idx on apartments(lat, lng);
 create index if not exists apartments_sigungu_idx on apartments(sigungu);
+create index if not exists apartments_naver_idx on apartments(naver_complex_id);
 
 -- 실거래가 (국토부 — 매매)
 create table if not exists transactions (
@@ -327,3 +332,9 @@ end;
 $$;
 
 grant execute on function rpc_map_apartments_radius(double precision) to service_role;
+
+-- ─── 네이버 단지 ID 매핑 (feat/naver-complex-id-mapping) ───────────────────
+-- 기존 apartments 테이블에 naver_complex_id 컬럼 추가 — idempotent.
+-- scripts/naver-complex-mapping.ts → scripts/update-naver-complex-ids.ts 순으로 채움.
+alter table apartments add column if not exists naver_complex_id int;
+create index if not exists apartments_naver_idx on apartments(naver_complex_id);
