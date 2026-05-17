@@ -44,11 +44,10 @@ function fmtYearMonth(date: string): string {
   return date.slice(0, 7);
 }
 
-function naverRealEstateUrl(name: string, sigungu: string | null): string {
-  const tokens = (sigungu ?? "").split(/\s+/).filter(Boolean);
-  const region = tokens.length > 0 ? tokens[tokens.length - 1] : "";
-  const q = [name, region, "아파트"].filter(Boolean).join(" ");
-  return `https://search.naver.com/search.naver?query=${encodeURIComponent(q)}`;
+function naverRealEstateUrl(name: string, _sigungu: string | null): string {
+  // m.land.naver.com/search/result/<단지명> → 302로 단지 ID 페이지 자동 redirect.
+  // 매칭 실패 시 검색 결과 페이지로 (네이버 자체 fallback).
+  return `https://m.land.naver.com/search/result/${encodeURIComponent(name)}`;
 }
 
 /** 정렬 키: 매매/전세/월세는 가격(보증금) 숫자값으로 비교. */
@@ -103,7 +102,7 @@ function WolseCell({ w }: { w: WolseLatest | null }) {
   if (!w) return <span className="text-slate-300">-</span>;
   return (
     <>
-      <div>보 {fmtManWon(w.depositManWon)} / 월 {w.monthlyRentManWon.toLocaleString()}</div>
+      <div>{fmtManWon(w.depositManWon)} / {w.monthlyRentManWon.toLocaleString()}</div>
       <div className="text-[10px] text-slate-400 font-normal">
         {w.areaM2 != null ? `전용 ${Math.round(w.areaM2)}㎡ · ` : ""}{fmtYearMonth(w.contractDate)}
       </div>
