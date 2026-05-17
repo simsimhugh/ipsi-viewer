@@ -160,7 +160,36 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
   return (
     <section className="mt-6 rounded border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-        <h2 className="text-sm font-medium text-slate-700">주변 아파트 단지</h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-sm font-medium text-slate-700">주변 아파트 단지</h2>
+          <span
+            className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 border border-amber-200"
+            aria-label="베타 서비스 — 데이터 정확도 주의"
+          >
+            Beta
+          </span>
+          <span className="text-[11px] text-slate-400 leading-tight">
+            국토부 실거래가 기반 · 정정·취소 매물 미반영 가능 ·{" "}
+            <a
+              href="https://rt.molit.go.kr"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline hover:text-slate-600"
+            >
+              국토부
+            </a>
+            {" "}·{" "}
+            <a
+              href="https://new.land.naver.com"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline hover:text-slate-600"
+            >
+              네이버
+            </a>
+            {" "}교차 확인 권장
+          </span>
+        </div>
         {apartments.length > 0 && (
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-slate-500">표시:</span>
@@ -229,8 +258,9 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
           </table>
           <div className="mt-2 text-[11px] text-slate-400">
             * 거리는 학교 좌표 기준 반경 1km 내 단지 (학구도 폴리곤 적재 전 임시).
-            매매·전세·월세는 단지별 가장 최근 거래 1건 (국토부 공개 데이터).
-            단지명 클릭 시 네이버 검색.
+            매매·전세·월세는 단지별 가장 최근 거래 1건 (국토부 공개 데이터 기반).
+            정정·취소된 매물이나 최신 거래가 반영되지 않을 수 있습니다.
+            단지명 클릭 시 네이버 부동산 검색.
           </div>
         </div>
       )}
