@@ -27,6 +27,8 @@
     "map:apartments": "tsx scripts/map-apartments.ts",
     "realestate:mvp": "tsx scripts/run-realestate-mvp.ts",
     "rentals:mvp": "tsx scripts/run-rentals-mvp.ts",
+    "realestate:fullcountry": "tsx scripts/run-realestate-fullcountry.ts",
+    "realestate:import": "tsx scripts/import-realestate-fullcountry.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit",

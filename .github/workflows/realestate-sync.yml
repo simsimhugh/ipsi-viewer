@@ -1,0 +1,88 @@
+name: Realestate Sync (전국)
+
+# 부동산 (매매 + 전월세) 월 1회 incremental sync.
+# Workflow_dispatch 전용 — GitHub UI "Run workflow" 또는 CLI:
+#   gh workflow run realestate-sync.yml -f months=202504 -f type=both
+on:
+  workflow_dispatch:
+    inputs:
+      months:
+        description: "수집 월 (콤마 구분 YYYYMM). 빈 값이면 최근 1개월"
+        default: ""
+        required: false
+      lawd_filter:
+        description: "시·군·구 코드 콤마 구분. 빈 값이면 전국 (예: 11680,11710)"
+        default: ""
+        required: false
+      type:
+        description: "trade / rent / both"
+        default: "both"
+        required: false
+      workers:
+        description: "동시 워커 (data.go.kr 부담 — 기본 5)"
+        default: "5"
+        required: false
+      skip_geocode:
+        description: "카카오 지오코딩 skip (true=cache hit만, false=신규 호출)"
+        default: "false"
+        required: false
+      skip_map:
+        description: "apartment_school_map 재매핑 skip (true/false)"
+        default: "false"
+        required: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PUBLIC_DATA_API_KEY: ${{ secrets.PUBLIC_DATA_API_KEY }}
+      KAKAO_REST_API_KEY:  ${{ secrets.KAKAO_REST_API_KEY }}
+      SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HAKGUN_DATA_DIR:     ${{ github.workspace }}/data/realestate-sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+
+      - name: 인자 결정
+        id: cfg
+        run: |
+          MONTHS_IN="${{ inputs.months }}"
+          if [ -z "$MONTHS_IN" ]; then
+            # 최근 1개월 (이번 달은 누락 가능성 → 한 달 이전)
+            Y=$(date -d "1 month ago" +%Y)
+            M=$(date -d "1 month ago" +%m)
+            MONTHS_IN="${Y}${M}"
+          fi
+          echo "months=$MONTHS_IN" >> $GITHUB_OUTPUT
+          echo "사용 months=$MONTHS_IN type=${{ inputs.type }} lawd=${{ inputs.lawd_filter }} workers=${{ inputs.workers }}"
+
+      - name: 부동산 fetch (전국 또는 filter)
+        run: |
+          mkdir -p "$HAKGUN_DATA_DIR/realestate/fullcountry"
+          ARGS="--months ${{ steps.cfg.outputs.months }} --type ${{ inputs.type || 'both' }} --workers ${{ inputs.workers || '5' }}"
+          if [ -n "${{ inputs.lawd_filter }}" ]; then
+            ARGS="$ARGS --lawd-filter ${{ inputs.lawd_filter }}"
+          fi
+          echo "ARGS=$ARGS"
+          npx tsx scripts/run-realestate-fullcountry.ts $ARGS
+
+      - name: Supabase 적재 (apartments / transactions / rentals)
+        run: |
+          ARGS=""
+          if [ "${{ inputs.skip_geocode }}" = "true" ]; then ARGS="$ARGS --skip-geocode"; fi
+          if [ "${{ inputs.type }}" = "trade" ]; then ARGS="$ARGS --skip-rent"; fi
+          if [ "${{ inputs.type }}" = "rent" ];  then ARGS="$ARGS --skip-tx"; fi
+          npx tsx scripts/import-realestate-fullcountry.ts $ARGS
+
+      - name: 아파트 ↔ 학교 매핑 (반경 1km)
+        if: inputs.skip_map != 'true'
+        run: |
+          npx tsx scripts/map-apartments.ts --mode radius --km 1
+
+      - name: 결과 요약
+        run: |
+          echo "::notice::Realestate sync 완료 — months=${{ steps.cfg.outputs.months }} type=${{ inputs.type || 'both' }}"
