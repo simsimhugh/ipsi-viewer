@@ -6,12 +6,16 @@
  */
 import { createClient } from "@supabase/supabase-js";
 
-// 모듈 레벨 상수 대신 함수 호출 시점에 읽어 build-time 고정 방지
+// Server Component 전용 — service_role key 사용 (클라이언트에 노출 안 됨).
+// SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 는 서버 전용 env var (NEXT_PUBLIC_ 아님).
+// anon key fallback: public read RLS가 있으므로 anon으로도 읽기 가능하지만,
+// Vercel 빌드 시 NEXT_PUBLIC_ 인라이닝 문제를 피하기 위해 서버 전용 키 우선.
 function getSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) return null;
-  return createClient(url, anon, { auth: { persistSession: false } });
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  // service_role key 우선 (서버 전용), 없으면 anon key fallback
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 
 export interface ApartmentSummary {
