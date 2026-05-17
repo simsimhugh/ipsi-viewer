@@ -112,9 +112,8 @@ function recentMonths(n: number): string[] {
   const now = new Date();
   let y = now.getFullYear();
   let m = now.getMonth() + 1;
-  // 이번 달은 데이터 보고 누락 가능성이 높아 1달 이전부터 시작
-  m--;
-  if (m < 1) { m = 12; y--; }
+  // 이번 달 포함 — 거래는 매일 신고되므로 진행 중 월도 fetch.
+  // 신고 지연으로 부분 누락된 거래는 다음 sync 시 --force-recent 로 다시 가져옴.
   for (let i = 0; i < n; i++) {
     out.unshift(`${y}${String(m).padStart(2, "0")}`);
     m--;
@@ -306,10 +305,13 @@ async function main(): Promise<void> {
   const typeArg = (arg("type") ?? "both") as "trade" | "rent" | "both";
   const lawdFilterArg = arg("lawd-filter");
   const workers = parseInt(arg("workers") ?? "8");
+  // 최근 N개월은 idempotent skip 우회 → 진행 중 월의 신규 거래 매번 포착
+  const forceRecent = parseInt(arg("force-recent") ?? "0");
 
   const months: string[] = monthsArg
     ? monthsArg.split(",").map((s) => s.trim()).filter(Boolean)
     : recentMonths(parseInt(recentArg ?? "12"));
+  const forceMonthSet = new Set(forceRecent > 0 ? recentMonths(forceRecent) : []);
 
   let lawdList: LawdEntry[] = ALL_LAWD_CODES;
   if (lawdFilterArg) {
@@ -337,13 +339,14 @@ async function main(): Promise<void> {
   let skipped = 0;
   for (const t of allTasks) {
     const out = taskOutPath(t);
-    if (await fileExistsNonEmpty(out)) {
+    if (await fileExistsNonEmpty(out) && !forceMonthSet.has(t.ym)) {
       skipped++;
       continue;
     }
     todo.push(t);
   }
-  console.log(`  skip(이미 fetch): ${skipped}, todo: ${todo.length}, workers=${workers}`);
+  console.log(`  skip(이미 fetch): ${skipped}, todo: ${todo.length}, workers=${workers}`
+    + (forceMonthSet.size > 0 ? `, force-recent=${[...forceMonthSet].join(",")}` : ""));
 
   let totalRecords = 0;
   let zeroCount = 0;
