@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const STORAGE_KEY_HIDDEN_CATS = "ipsi-viewer.detail.hiddenCats.v1";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import type { School, CareerRow } from "@/lib/types";
 import { eliteCount, elitePct } from "@/lib/types";
@@ -60,6 +62,18 @@ export default function SchoolDetailView({ school }: { school: School }) {
 
   // 차트 라인 토글 (기본 모두 활성)
   const [hiddenCats, setHiddenCats] = useState<Set<keyof CareerRow>>(new Set());
+
+  // localStorage 영속화 — 학교 간 공통 토글 상태
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_HIDDEN_CATS);
+      if (raw) setHiddenCats(new Set(JSON.parse(raw) as (keyof CareerRow)[]));
+    } catch { /* corrupt JSON 등 — 무시 */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY_HIDDEN_CATS, JSON.stringify([...hiddenCats])); } catch { /* quota */ }
+  }, [hiddenCats]);
+
   function toggleCat(key: keyof CareerRow) {
     setHiddenCats((prev) => {
       const next = new Set(prev);
