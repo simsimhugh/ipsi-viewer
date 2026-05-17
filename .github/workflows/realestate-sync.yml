@@ -4,6 +4,10 @@ name: Realestate Sync (전국)
 # Workflow_dispatch 전용 — GitHub UI "Run workflow" 또는 CLI:
 #   gh workflow run realestate-sync.yml -f months=202504 -f type=both
 on:
+  # 자동 주 1회 — 매주 일요일 KST 03:00 (UTC 18:00 토요일)
+  # rolling 12개월 + force-recent 2 default — 진행 중 월 신규 거래도 매번 포착
+  schedule:
+    - cron: "0 18 * * 6"
   workflow_dispatch:
     inputs:
       months:
