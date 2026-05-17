@@ -304,8 +304,24 @@ async function main(): Promise<void> {
   const skipRent = hasFlag("skip-rent");
   const geocodeOnly = hasFlag("geocode-only");
   const force = hasFlag("force");
+  // 최근 N월의 realestate_runs marker 무시 → 신규 거래 매번 포착
+  const forceRecent = parseInt(arg("force-recent") ?? "0");
   const geoWorkers = parseInt(arg("geo-workers") ?? "8");
   const CHUNK = parseInt(arg("chunk") ?? "1500");
+
+  function recentMonthsImport(n: number): Set<string> {
+    if (n <= 0) return new Set();
+    const out: string[] = [];
+    const now = new Date();
+    let y = now.getFullYear();
+    let m = now.getMonth() + 1;
+    for (let i = 0; i < n; i++) {
+      out.push(`${y}${String(m).padStart(2, "0")}`);
+      m--; if (m < 1) { m = 12; y--; }
+    }
+    return new Set(out);
+  }
+  const forceMonths = recentMonthsImport(forceRecent);
 
   const need: string[] = [];
   if (!SUPA_URL) need.push("SUPABASE_URL");
@@ -314,7 +330,8 @@ async function main(): Promise<void> {
   if (need.length) { console.error(`[import] env 누락: ${need.join(", ")}`); process.exit(1); }
 
   console.log(`[import-realestate-fullcountry]`);
-  console.log(`  옵션: skipGeocode=${skipGeocode} skipTx=${skipTx} skipRent=${skipRent} geocodeOnly=${geocodeOnly} force=${force}`);
+  console.log(`  옵션: skipGeocode=${skipGeocode} skipTx=${skipTx} skipRent=${skipRent} geocodeOnly=${geocodeOnly} force=${force}`
+    + (forceRecent > 0 ? ` force-recent=${forceRecent}월(${[...forceMonths].join(",")})` : ""));
   console.log(`  geoWorkers=${geoWorkers} chunk=${CHUNK}`);
 
   await mkdir(REAL_DIR, { recursive: true });
@@ -330,6 +347,8 @@ async function main(): Promise<void> {
       console.warn(`  [warn] realestate_runs 조회 실패 (스키마 미적용?): ${error.message}`);
     } else if (data) {
       for (const r of data as Array<{ lawd_cd: string; deal_ym: string; type: string }>) {
+        // force-recent 월은 marker 무시 (재적재 강제)
+        if (forceMonths.has(r.deal_ym)) continue;
         completedKeys.add(`${r.lawd_cd}|${r.deal_ym}|${r.type}`);
       }
       console.log(`  적재 이력(realestate_runs): ${completedKeys.size}건 — 해당 (lawd, ym, type) skip`);

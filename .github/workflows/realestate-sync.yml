@@ -7,8 +7,16 @@ on:
   workflow_dispatch:
     inputs:
       months:
-        description: "수집 월 (콤마 구분 YYYYMM). 빈 값이면 최근 1개월"
+        description: "수집 월 (콤마 구분 YYYYMM). 빈 값이면 recent N개월 자동"
         default: ""
+        required: false
+      recent:
+        description: "최근 N개월 (months 빈 값일 때만 사용)"
+        default: "12"
+        required: false
+      force_recent:
+        description: "최근 N개월은 idempotent skip 우회 (진행 중 월 + 신규 거래 재포착)"
+        default: "2"
         required: false
       lawd_filter:
         description: "시·군·구 코드 콤마 구분. 빈 값이면 전국 (예: 11680,11710)"
@@ -52,18 +60,21 @@ jobs:
         run: |
           MONTHS_IN="${{ inputs.months }}"
           if [ -z "$MONTHS_IN" ]; then
-            # 최근 1개월 (이번 달은 누락 가능성 → 한 달 이전)
-            Y=$(date -d "1 month ago" +%Y)
-            M=$(date -d "1 month ago" +%m)
-            MONTHS_IN="${Y}${M}"
+            # 빈 값 유지 → script에서 recent N개월 default 사용 (이번 달 포함)
+            MONTHS_IN=""
           fi
           echo "months=$MONTHS_IN" >> $GITHUB_OUTPUT
-          echo "사용 months=$MONTHS_IN type=${{ inputs.type }} lawd=${{ inputs.lawd_filter }} workers=${{ inputs.workers }}"
+          echo "사용 months='$MONTHS_IN' recent=${{ inputs.recent || '12' }} force_recent=${{ inputs.force_recent || '2' }} type=${{ inputs.type }} lawd=${{ inputs.lawd_filter }} workers=${{ inputs.workers }}"
 
       - name: 부동산 fetch (전국 또는 filter)
         run: |
           mkdir -p "$HAKGUN_DATA_DIR/realestate/fullcountry"
-          ARGS="--months ${{ steps.cfg.outputs.months }} --type ${{ inputs.type || 'both' }} --workers ${{ inputs.workers || '8' }}"
+          ARGS="--type ${{ inputs.type || 'both' }} --workers ${{ inputs.workers || '8' }} --force-recent ${{ inputs.force_recent || '2' }}"
+          if [ -n "${{ steps.cfg.outputs.months }}" ]; then
+            ARGS="$ARGS --months ${{ steps.cfg.outputs.months }}"
+          else
+            ARGS="$ARGS --recent ${{ inputs.recent || '12' }}"
+          fi
           if [ -n "${{ inputs.lawd_filter }}" ]; then
             ARGS="$ARGS --lawd-filter ${{ inputs.lawd_filter }}"
           fi
@@ -72,7 +83,7 @@ jobs:
 
       - name: Supabase 적재 (apartments / transactions / rentals)
         run: |
-          ARGS=""
+          ARGS="--force-recent ${{ inputs.force_recent || '2' }}"
           if [ "${{ inputs.skip_geocode }}" = "true" ]; then ARGS="$ARGS --skip-geocode"; fi
           if [ "${{ inputs.type }}" = "trade" ]; then ARGS="$ARGS --skip-rent"; fi
           if [ "${{ inputs.type }}" = "rent" ];  then ARGS="$ARGS --skip-tx"; fi
