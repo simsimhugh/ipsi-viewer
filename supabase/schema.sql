@@ -159,7 +159,7 @@ create table if not exists apartments (
 create index if not exists apartments_geo_idx on apartments(lat, lng);
 create index if not exists apartments_sigungu_idx on apartments(sigungu);
 
--- 실거래가 (국토부)
+-- 실거래가 (국토부 — 매매)
 create table if not exists transactions (
   id            bigserial primary key,
   apt_id        bigint references apartments(id) on delete cascade,
@@ -172,6 +172,23 @@ create table if not exists transactions (
 );
 create index if not exists transactions_apt_idx on transactions(apt_id);
 create index if not exists transactions_date_idx on transactions(contract_date desc);
+
+-- 전월세 (국토부 — 보증금 + 월세)
+-- monthly_rent_man_won = 0 → 전세, > 0 → 월세/반전세
+create table if not exists rentals (
+  id                    bigserial primary key,
+  apt_id                bigint references apartments(id) on delete cascade,
+  area_m2               double precision,
+  deposit_man_won       bigint,
+  monthly_rent_man_won  bigint,
+  contract_date         date,
+  floor                 int,
+  source                text,
+  updated_at            timestamptz not null default now()
+);
+create index if not exists rentals_apt_idx on rentals(apt_id);
+create index if not exists rentals_date_idx on rentals(contract_date desc);
+create index if not exists rentals_monthly_idx on rentals(apt_id, monthly_rent_man_won, contract_date desc);
 
 -- 아파트 ↔ 중학교 매핑 (PIP 또는 반경 기반 결과)
 create table if not exists apartment_school_map (
@@ -188,18 +205,21 @@ create index if not exists asm_shl_idx on apartment_school_map(shl_idf_cd);
 alter table school_districts       enable row level security;
 alter table apartments             enable row level security;
 alter table transactions           enable row level security;
+alter table rentals                enable row level security;
 alter table apartment_school_map   enable row level security;
 
 create policy "school_districts public read"     on school_districts     for select using (true);
 create policy "apartments public read"           on apartments           for select using (true);
 create policy "transactions public read"         on transactions         for select using (true);
+create policy "rentals public read"              on rentals              for select using (true);
 create policy "apartment_school_map public read" on apartment_school_map for select using (true);
 
-grant select on school_districts, apartments, transactions, apartment_school_map to anon, authenticated;
-grant all    on school_districts, apartments, transactions, apartment_school_map to service_role;
+grant select on school_districts, apartments, transactions, rentals, apartment_school_map to anon, authenticated;
+grant all    on school_districts, apartments, transactions, rentals, apartment_school_map to service_role;
 
 -- 부동산 테이블 bigserial 시퀀스 — service_role가 INSERT 시 nextval 호출하므로 USAGE 필수.
 -- (line 84의 "all sequences"는 적용 시점 기준이라 새로 만든 시퀀스에 누락될 수 있음 — 명시 보강)
 grant usage, select on sequence apartments_id_seq        to service_role;
 grant usage, select on sequence transactions_id_seq      to service_role;
+grant usage, select on sequence rentals_id_seq           to service_role;
 grant usage, select on sequence school_districts_id_seq  to service_role;
