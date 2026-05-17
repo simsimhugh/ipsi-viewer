@@ -144,27 +144,33 @@ export default function SchoolDetailView({ school }: { school: School }) {
   // - 분자: visible 카테고리의 row 인원 합
   // - 분모: row.graduates
   // 분모 0이면 비율은 "—", 분자만 0인 경우는 0 (0.0%) 정상 표시.
+  //
+  // 주의: 자식 컴포넌트(<SelectedSumCell />)로 분리하지 않고
+  // helper 함수 + 인라인 JSX 로 직접 그린다. 부모 함수 내부에서 정의된
+  // 자식 컴포넌트는 매 render 마다 type identity 가 바뀌어 React 가
+  // unmount/remount 하면서 props 변화를 감지 못 하는 stale UI 가 생기는
+  // 안티패턴이라, hiddenCats 토글이 합계 셀에 반영되지 않던 원인이었다.
   const visibleCatKeys = useMemo<(keyof CareerRow)[]>(
     () => TREND_CATEGORIES.filter((c) => !hiddenCats.has(c.key)).map((c) => c.key),
     [hiddenCats],
   );
-  function selectedSum(row: CareerRow | null): number | null {
+  const selectedSum = (row: CareerRow | null): number | null => {
     if (!row) return null;
     let s = 0;
     for (const k of visibleCatKeys) s += row[k];
     return s;
-  }
-  function SelectedSumCell({ row }: { row: CareerRow | null }) {
+  };
+  const renderSelectedSum = (row: CareerRow | null) => {
     const n = selectedSum(row);
     if (n == null) return <span className="text-slate-300">—</span>;
     return <span className="font-medium">{n}</span>;
-  }
-  function SelectedPctCell({ row }: { row: CareerRow | null }) {
+  };
+  const renderSelectedPct = (row: CareerRow | null) => {
     if (!row) return <span className="text-slate-300">—</span>;
     if (row.graduates <= 0) return <span className="text-slate-300">—</span>;
     const n = selectedSum(row) ?? 0;
     return <span className="font-medium text-brand-700">{(n / row.graduates * 100).toFixed(1)}%</span>;
-  }
+  };
 
   return (
     <>
@@ -282,11 +288,11 @@ export default function SchoolDetailView({ school }: { school: School }) {
               </td>
               {yearRows.map((r, i) => (
                 <td key={`sel-sum-${yearsAsc[i]}`} className="px-3 py-1.5 text-right">
-                  <SelectedSumCell row={r} />
+                  {renderSelectedSum(r)}
                 </td>
               ))}
               <td className="px-3 py-1.5 text-right border-l border-slate-200 bg-brand-100/60">
-                <SelectedSumCell row={aggregatedTotal} />
+                {renderSelectedSum(aggregatedTotal)}
               </td>
             </tr>
             <tr className="border-t border-brand-100 bg-brand-50/40 font-medium">
@@ -295,11 +301,11 @@ export default function SchoolDetailView({ school }: { school: School }) {
               </td>
               {yearRows.map((r, i) => (
                 <td key={`sel-pct-${yearsAsc[i]}`} className="px-3 py-1.5 text-right">
-                  <SelectedPctCell row={r} />
+                  {renderSelectedPct(r)}
                 </td>
               ))}
               <td className="px-3 py-1.5 text-right border-l border-slate-200 bg-brand-100/60">
-                <SelectedPctCell row={aggregatedTotal} />
+                {renderSelectedPct(aggregatedTotal)}
               </td>
             </tr>
           </tbody>
