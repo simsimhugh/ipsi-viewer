@@ -5,7 +5,7 @@
  * 데이터 있을 때: 단지명·세대수·준공년·거리·대표 평수 실거래가 중위값 표.
  * - 단지명 클릭 → 네이버 부동산 검색 새 창
  * - 표시 수 selector (10/20/50/전체, 기본 20)
- * - 컬럼 헤더 클릭 정렬 (단지명·세대수·건축년도·거리·실거래가·거래일)
+ * - 컬럼 헤더 클릭 정렬 (단지명·세대수·건축년도·거리·실거래가)
  * - 실거래가 셀: 가격(억) + 보조 "전용 NN㎡ (M건)"
  */
 "use client";
@@ -35,7 +35,7 @@ function naverRealEstateUrl(name: string, sigungu: string | null): string {
   return `https://search.naver.com/search.naver?query=${encodeURIComponent(q)}`;
 }
 
-type SortKey = "name" | "households" | "builtYear" | "distanceM" | "medianPriceWon" | "latestContractDate";
+type SortKey = "name" | "households" | "builtYear" | "distanceM" | "medianPriceWon";
 type SortDir = "asc" | "desc";
 
 const LIMIT_OPTIONS: Array<{ label: string; value: number | null }> = [
@@ -56,7 +56,7 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
     } else {
       setSortKey(key);
       // 숫자 컬럼은 기본 desc (큰 값 먼저), 거리·단지명은 asc
-      const numericDescDefault: SortKey[] = ["households", "builtYear", "medianPriceWon", "latestContractDate"];
+      const numericDescDefault: SortKey[] = ["households", "builtYear", "medianPriceWon"];
       setSortDir(numericDescDefault.includes(key) ? "desc" : "asc");
     }
   }
@@ -137,7 +137,6 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
                 <HeaderCell k="builtYear" label="준공" align="right" />
                 <HeaderCell k="distanceM" label="거리" align="right" />
                 <HeaderCell k="medianPriceWon" label="실거래가 (대표 평수 중위)" align="right" />
-                <HeaderCell k="latestContractDate" label="최근 거래일" align="right" />
               </tr>
             </thead>
             <tbody>
@@ -165,7 +164,6 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-1.5 text-right text-slate-500">{a.latestContractDate ?? "-"}</td>
                 </tr>
               ))}
             </tbody>
