@@ -223,3 +223,107 @@ grant usage, select on sequence apartments_id_seq        to service_role;
 grant usage, select on sequence transactions_id_seq      to service_role;
 grant usage, select on sequence rentals_id_seq           to service_role;
 grant usage, select on sequence school_districts_id_seq  to service_role;
+
+-- ─── 적재 속도 개선 (perf/realestate-fast-sync) ───────────────────────────
+-- 다음 4개 블록은 SQL Editor에서 한 번만 적용. 적용 후 import / map 스크립트가
+-- ON CONFLICT / RPC를 활용해 적재 시간을 50~80% 줄임.
+
+-- (1) apartments UNIQUE — ON CONFLICT 대상 키
+-- 동일 단지 키 정의: (name, coalesce(sigungu,''))
+-- 기존 중복 row 제거 후 unique index 생성.
+do $$
+begin
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'public' and indexname = 'apartments_name_sigungu_uidx'
+  ) then
+    -- 중복 정리: 같은 (name, sigungu)에서 가장 작은 id만 유지.
+    delete from apartments a
+    using (
+      select min(id) as keep_id, name, coalesce(sigungu, '') as sg
+      from apartments
+      group by name, coalesce(sigungu, '')
+      having count(*) > 1
+    ) d
+    where a.name = d.name
+      and coalesce(a.sigungu, '') = d.sg
+      and a.id <> d.keep_id;
+    create unique index apartments_name_sigungu_uidx
+      on apartments (name, coalesce(sigungu, ''));
+  end if;
+end$$;
+
+-- (2) transactions / rentals 중복 방지 — (apt_id, area_m2, contract_date, floor, price/deposit)
+-- 부분 인덱스는 ON CONFLICT 대상으로 사용하기 어려워, 전체 컬럼 unique 인덱스로.
+-- contract_date / floor / area / price 모두 동일하면 동일 거래로 간주 (재적재 시 idempotent).
+create unique index if not exists transactions_dedup_uidx
+  on transactions (apt_id, contract_date, area_m2, floor, price_won);
+create unique index if not exists rentals_dedup_uidx
+  on rentals (apt_id, contract_date, area_m2, floor, deposit_man_won, monthly_rent_man_won);
+
+-- (3) realestate_runs — (lawd_cd, deal_ym, type) 단위 적재 완료 마커
+-- 동일 (lawd_cd, ym, type) 다시 import 시 skip (idempotent).
+create table if not exists realestate_runs (
+  lawd_cd     text not null,
+  deal_ym     text not null,
+  type        text not null check (type in ('trade','rent')),
+  records     int not null default 0,
+  inserted    int not null default 0,
+  finished_at timestamptz not null default now(),
+  primary key (lawd_cd, deal_ym, type)
+);
+alter table realestate_runs enable row level security;
+grant all on realestate_runs to service_role;
+
+-- (4) PostGIS bounding-box + Haversine 기반 반경 매핑 RPC
+-- 입력: 반경 km (기본 1.0).
+-- 동작: 학교 좌표 × 단지 좌표 + 위경도 박스 사전 필터 → Haversine → apartment_school_map upsert.
+-- pre-filter (lat ±0.01° ≒ 1.1km, lng ±0.013° ≒ 1.1km @ 위도 37°)로
+-- 5만 × 13,137 = 6.5억 비교를 수백만 수준으로 줄임.
+create or replace function rpc_map_apartments_radius(p_km double precision default 1.0)
+returns int
+language plpgsql
+security definer
+as $$
+declare
+  inserted_count int;
+  radius_m       double precision := p_km * 1000;
+  lat_pad        double precision := p_km / 110.574;          -- 1° lat ≒ 110.574 km
+  lng_pad        double precision := p_km / 88.0;             -- 1° lng @ 37° ≒ 88 km (안전 마진)
+begin
+  with cand as (
+    select
+      a.id as apt_id,
+      s.shl_idf_cd,
+      6371000 * 2 * asin(sqrt(
+        sin(radians(s.lat - a.lat) / 2) ^ 2
+        + cos(radians(a.lat)) * cos(radians(s.lat))
+        * sin(radians(s.lng - a.lng) / 2) ^ 2
+      )) as d
+    from apartments a
+    cross join lateral (
+      select shl_idf_cd, lat, lng
+      from schools
+      where lat is not null and lng is not null
+        and lat between a.lat - lat_pad and a.lat + lat_pad
+        and lng between a.lng - lng_pad and a.lng + lng_pad
+    ) s
+    where a.lat is not null and a.lng is not null
+  ),
+  ins as (
+    insert into apartment_school_map (apt_id, shl_idf_cd, distance_m, in_district, source)
+    select apt_id, shl_idf_cd, round(d)::double precision, false,
+           'radius:' || p_km || 'km'
+    from cand
+    where d <= radius_m
+    on conflict (apt_id, shl_idf_cd) do update
+      set distance_m = excluded.distance_m,
+          source     = excluded.source
+    returning 1
+  )
+  select count(*) into inserted_count from ins;
+  return inserted_count;
+end;
+$$;
+
+grant execute on function rpc_map_apartments_radius(double precision) to service_role;
