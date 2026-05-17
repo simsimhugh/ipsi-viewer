@@ -1,24 +1,36 @@
 /**
  * 학교 상세 페이지의 "주변 아파트 단지" 섹션.
  *
- * 데이터 없을 때 (자원 미발급, 적재 전): 안내 placeholder.
- * 데이터 있을 때: 단지명·세대수·준공년·거리·대표 평수 실거래가 중위값 표.
- * - 단지명 클릭 → 네이버 부동산 검색 새 창
- * - 표시 수 selector (10/20/50/전체, 기본 20)
- * - 컬럼 헤더 클릭 정렬 (단지명·세대수·건축년도·거리·실거래가)
- * - 실거래가 셀: 가격(억) + 보조 "전용 NN㎡ (M건)"
+ * 컬럼: 단지명·세대수·준공·거리·매매·전세·월세.
+ * 매매/전세/월세는 단지별 최근 1건 (contract_date 가장 최근).
+ * 셀 형식 예:
+ *   매매: "32.5억\n전용 84㎡ · 2025-04"
+ *   전세: "9억\n전용 100㎡ · 2025-04"
+ *   월세: "보 1억 / 월 250\n전용 60㎡ · 2025-04"
+ * 데이터 없으면 "-".
  */
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ApartmentSummary } from "@/lib/realestate";
+import type { ApartmentSummary, SaleLatest, JeonseLatest, WolseLatest } from "@/lib/realestate";
 
+/** 원(₩) → "32.5억" / "9.0억" / "8000만" 표기. */
 function fmtPriceEok(won: number | null): string {
   if (won == null) return "-";
-  // 억 단위 표기 (예: 32.5억). 10억 이상은 소수 1자리, 미만은 2자리.
   const eok = won / 1e8;
   if (eok >= 10) return `${eok.toFixed(1)}억`;
-  return `${eok.toFixed(2)}억`;
+  if (eok >= 1) return `${eok.toFixed(2)}억`;
+  // 1억 미만: 만원 단위
+  return `${Math.round(won / 1e4).toLocaleString()}만`;
+}
+
+/** 만원 → "9억" / "1.2억" / "8000만" 표기 (전월세 보증금용). */
+function fmtManWon(manWon: number | null): string {
+  if (manWon == null) return "-";
+  const eok = manWon / 1e4;
+  if (eok >= 10) return `${eok.toFixed(1)}억`;
+  if (eok >= 1) return `${eok.toFixed(2)}억`;
+  return `${manWon.toLocaleString()}만`;
 }
 
 function fmtDistance(m: number | null): string {
@@ -27,15 +39,20 @@ function fmtDistance(m: number | null): string {
   return `${(m / 1000).toFixed(2)}km`;
 }
 
+/** "2025-04-18" → "2025-04". */
+function fmtYearMonth(date: string): string {
+  return date.slice(0, 7);
+}
+
 function naverRealEstateUrl(name: string, sigungu: string | null): string {
   const tokens = (sigungu ?? "").split(/\s+/).filter(Boolean);
-  // sigungu 마지막 토큰 (예: "서울 강남구" → "강남구") + "아파트"
   const region = tokens.length > 0 ? tokens[tokens.length - 1] : "";
   const q = [name, region, "아파트"].filter(Boolean).join(" ");
   return `https://search.naver.com/search.naver?query=${encodeURIComponent(q)}`;
 }
 
-type SortKey = "name" | "households" | "builtYear" | "distanceM" | "medianPriceWon";
+/** 정렬 키: 매매/전세/월세는 가격(보증금) 숫자값으로 비교. */
+type SortKey = "name" | "households" | "builtYear" | "distanceM" | "sale" | "jeonse" | "wolse";
 type SortDir = "asc" | "desc";
 
 const LIMIT_OPTIONS: Array<{ label: string; value: number | null }> = [
@@ -44,6 +61,55 @@ const LIMIT_OPTIONS: Array<{ label: string; value: number | null }> = [
   { label: "50", value: 50 },
   { label: "전체", value: null },
 ];
+
+/** 정렬 시 비교용 숫자 — null은 항상 뒤로. */
+function sortValue(a: ApartmentSummary, key: SortKey): number | string | null {
+  switch (key) {
+    case "name": return a.name;
+    case "households": return a.households;
+    case "builtYear": return a.builtYear;
+    case "distanceM": return a.distanceM;
+    case "sale": return a.latestSale?.priceWon ?? null;
+    case "jeonse": return a.latestJeonse?.depositManWon ?? null;
+    case "wolse": return a.latestWolse?.depositManWon ?? null;
+  }
+}
+
+function SaleCell({ s }: { s: SaleLatest | null }) {
+  if (!s) return <span className="text-slate-300">-</span>;
+  return (
+    <>
+      <div>{fmtPriceEok(s.priceWon)}</div>
+      <div className="text-[10px] text-slate-400 font-normal">
+        {s.areaM2 != null ? `전용 ${Math.round(s.areaM2)}㎡ · ` : ""}{fmtYearMonth(s.contractDate)}
+      </div>
+    </>
+  );
+}
+
+function JeonseCell({ j }: { j: JeonseLatest | null }) {
+  if (!j) return <span className="text-slate-300">-</span>;
+  return (
+    <>
+      <div>{fmtManWon(j.depositManWon)}</div>
+      <div className="text-[10px] text-slate-400 font-normal">
+        {j.areaM2 != null ? `전용 ${Math.round(j.areaM2)}㎡ · ` : ""}{fmtYearMonth(j.contractDate)}
+      </div>
+    </>
+  );
+}
+
+function WolseCell({ w }: { w: WolseLatest | null }) {
+  if (!w) return <span className="text-slate-300">-</span>;
+  return (
+    <>
+      <div>보 {fmtManWon(w.depositManWon)} / 월 {w.monthlyRentManWon.toLocaleString()}</div>
+      <div className="text-[10px] text-slate-400 font-normal">
+        {w.areaM2 != null ? `전용 ${Math.round(w.areaM2)}㎡ · ` : ""}{fmtYearMonth(w.contractDate)}
+      </div>
+    </>
+  );
+}
 
 export default function SchoolApartments({ apartments }: { apartments: ApartmentSummary[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("distanceM");
@@ -55,8 +121,8 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      // 숫자 컬럼은 기본 desc (큰 값 먼저), 거리·단지명은 asc
-      const numericDescDefault: SortKey[] = ["households", "builtYear", "medianPriceWon"];
+      // 가격·세대수·건축년도는 desc 기본 (큰 값 먼저), 거리·단지명은 asc
+      const numericDescDefault: SortKey[] = ["households", "builtYear", "sale", "jeonse", "wolse"];
       setSortDir(numericDescDefault.includes(key) ? "desc" : "asc");
     }
   }
@@ -65,9 +131,8 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
     const factor = sortDir === "asc" ? 1 : -1;
     const arr = [...apartments];
     arr.sort((a, b) => {
-      const va = a[sortKey];
-      const vb = b[sortKey];
-      // null 은 항상 뒤로
+      const va = sortValue(a, sortKey);
+      const vb = sortValue(b, sortKey);
       if (va == null && vb == null) return 0;
       if (va == null) return 1;
       if (vb == null) return -1;
@@ -124,8 +189,8 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
       </div>
       {apartments.length === 0 ? (
         <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          주변 아파트 데이터 준비 중입니다. 학교 좌표 기준 반경 1km 내 단지 매핑·국토부 실거래가
-          데이터가 순차 도착하는 대로 이 영역에 단지명·세대수·실거래가가 표시됩니다.
+          주변 아파트 데이터 준비 중입니다. 학교 좌표 기준 반경 1km 내 단지 매핑·국토부 매매·전월세
+          데이터가 순차 도착하는 대로 이 영역에 표시됩니다.
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -136,7 +201,9 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
                 <HeaderCell k="households" label="세대수" align="right" />
                 <HeaderCell k="builtYear" label="준공" align="right" />
                 <HeaderCell k="distanceM" label="거리" align="right" />
-                <HeaderCell k="medianPriceWon" label="실거래가 (대표 평수 중위)" align="right" />
+                <HeaderCell k="sale" label="매매 (최근)" align="right" />
+                <HeaderCell k="jeonse" label="전세 (최근)" align="right" />
+                <HeaderCell k="wolse" label="월세 (최근)" align="right" />
               </tr>
             </thead>
             <tbody>
@@ -156,21 +223,16 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
                   <td className="px-3 py-1.5 text-right">{a.households ?? "-"}</td>
                   <td className="px-3 py-1.5 text-right">{a.builtYear ?? "-"}</td>
                   <td className="px-3 py-1.5 text-right">{fmtDistance(a.distanceM)}</td>
-                  <td className="px-3 py-1.5 text-right">
-                    <div>{fmtPriceEok(a.medianPriceWon)}</div>
-                    {a.representativeAreaM2 != null && (
-                      <div className="text-[10px] text-slate-400 font-normal">
-                        전용 {a.representativeAreaM2}㎡ ({a.representativeAreaCount}건)
-                      </div>
-                    )}
-                  </td>
+                  <td className="px-3 py-1.5 text-right"><SaleCell s={a.latestSale} /></td>
+                  <td className="px-3 py-1.5 text-right"><JeonseCell j={a.latestJeonse} /></td>
+                  <td className="px-3 py-1.5 text-right"><WolseCell w={a.latestWolse} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div className="mt-2 text-[11px] text-slate-400">
             * 거리는 학교 좌표 기준 반경 1km 내 단지 (학구도 폴리곤 적재 전 임시).
-            실거래가는 국토부 공개 데이터에서 단지별 대표 평수(거래 빈도 최다 area_m2 그룹)의 중위값.
+            매매·전세·월세는 단지별 가장 최근 거래 1건 (국토부 공개 데이터).
             단지명 클릭 시 네이버 검색.
           </div>
         </div>
