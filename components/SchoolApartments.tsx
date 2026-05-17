@@ -1,7 +1,8 @@
 /**
  * 학교 상세 페이지의 "주변 아파트 단지" 섹션.
  *
- * 컬럼: 단지명·세대수·준공·거리·매매·전세·월세.
+ * 컬럼: 단지명·준공·거리·매매·전세·월세.
+ * (세대수 컬럼은 카카오 지오코딩 데이터에 채워지지 않아 제거.)
  * 매매/전세/월세는 단지별 최근 1건 (contract_date 가장 최근).
  * 셀 형식 예:
  *   매매: "32.5억\n전용 84㎡ · 2025-04"
@@ -51,7 +52,7 @@ function naverRealEstateUrl(name: string, _sigungu: string | null): string {
 }
 
 /** 정렬 키: 매매/전세/월세는 가격(보증금) 숫자값으로 비교. */
-type SortKey = "name" | "households" | "builtYear" | "distanceM" | "sale" | "jeonse" | "wolse";
+type SortKey = "name" | "builtYear" | "distanceM" | "sale" | "jeonse" | "wolse";
 type SortDir = "asc" | "desc";
 
 const LIMIT_OPTIONS: Array<{ label: string; value: number | null }> = [
@@ -65,7 +66,6 @@ const LIMIT_OPTIONS: Array<{ label: string; value: number | null }> = [
 function sortValue(a: ApartmentSummary, key: SortKey): number | string | null {
   switch (key) {
     case "name": return a.name;
-    case "households": return a.households;
     case "builtYear": return a.builtYear;
     case "distanceM": return a.distanceM;
     case "sale": return a.latestSale?.priceWon ?? null;
@@ -120,8 +120,8 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      // 가격·세대수·건축년도는 desc 기본 (큰 값 먼저), 거리·단지명은 asc
-      const numericDescDefault: SortKey[] = ["households", "builtYear", "sale", "jeonse", "wolse"];
+      // 가격·건축년도는 desc 기본 (큰 값 먼저), 거리·단지명은 asc
+      const numericDescDefault: SortKey[] = ["builtYear", "sale", "jeonse", "wolse"];
       setSortDir(numericDescDefault.includes(key) ? "desc" : "asc");
     }
   }
@@ -197,7 +197,6 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
             <thead className="bg-slate-100 text-slate-600">
               <tr>
                 <HeaderCell k="name" label="단지명" />
-                <HeaderCell k="households" label="세대수" align="right" />
                 <HeaderCell k="builtYear" label="준공" align="right" />
                 <HeaderCell k="distanceM" label="거리" align="right" />
                 <HeaderCell k="sale" label="매매 (최근)" align="right" />
@@ -219,7 +218,6 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
                       {a.name}
                     </a>
                   </td>
-                  <td className="px-3 py-1.5 text-right">{a.households ?? "-"}</td>
                   <td className="px-3 py-1.5 text-right">{a.builtYear ?? "-"}</td>
                   <td className="px-3 py-1.5 text-right">{fmtDistance(a.distanceM)}</td>
                   <td className="px-3 py-1.5 text-right"><SaleCell s={a.latestSale} /></td>

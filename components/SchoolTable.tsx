@@ -75,7 +75,9 @@ const INITIAL: TableState = {
   sortKey: "elitePct",
   sortDir: "desc",
   page: 0,
-  hiddenCols: [],
+  // 일반고는 default 숨김 — 컬럼 토글 버튼 인지성 향상
+  // (localStorage에 기존 hiddenCols가 있으면 그쪽이 우선 — 기존 사용자 상태 유지)
+  hiddenCols: ["generalHigh"],
 };
 
 const PAGE_SIZE = 50;

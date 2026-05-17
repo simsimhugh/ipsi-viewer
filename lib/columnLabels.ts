@@ -30,9 +30,9 @@ export const CAREER_LABELS: Record<keyof CareerRow, ColumnLabel> & {
   employed:               { label: "취업",      description: "졸업 후 취업" },
   altEducation:           { label: "대안교육",   description: "대안교육기관 진학 (학력 미인정)" },
   unemployed:             { label: "무직·미상", description: "무직 또는 진로 미상" },
-  // 동적 (SchoolTable의 합계/비율)
-  eliteCount:             { label: "합계",      description: "현재 보이는 진학 종류 합산 (예: 과학고+외고·국제고+자사고…). 컬럼 숨기면 합계에서 빠짐." },
-  elitePct:               { label: "비율",      description: "합계 ÷ 졸업자 × 100. 컬럼 숨김에 따라 동적 갱신." },
+  // 동적 (SchoolTable의 합계/비율 — 칩 토글에 따라 동적 갱신)
+  eliteCount:             { label: "선택 합계", description: "현재 보이는 진학 종류 합산 (예: 과학고+외고·국제고+자사고…). 컬럼·칩 숨기면 합계에서 빠짐." },
+  elitePct:               { label: "선택 비율", description: "선택 합계 ÷ 졸업자 × 100. 컬럼·칩 숨김에 따라 동적 갱신." },
 };
 
 /** 학교 메타 라벨 */

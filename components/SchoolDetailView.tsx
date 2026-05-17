@@ -31,13 +31,13 @@ const ROW_KEYS: { key: keyof CareerRow; emphasis?: boolean }[] = [
 /** 트렌드 차트 — 8종 학교 종류 (메인 테이블과 동일) */
 const TREND_CATEGORIES: { key: keyof CareerRow; color: string }[] = [
   { key: "generalHigh",       color: "#94a3b8" },
-  { key: "scienceHigh",       color: "#06b6d4" },
+  { key: "scienceHigh",       color: "#16a34a" }, // 녹색 — 사용자 요청
   { key: "foreignIntlHigh",   color: "#0ea5e9" },
   { key: "artsSportsHigh",    color: "#f59e0b" },
   { key: "privateAutonomous", color: "#ef4444" },
   { key: "publicAutonomous",  color: "#f97316" },
   { key: "vocationalHigh",    color: "#a78bfa" },
-  { key: "meisterHigh",       color: "#84cc16" },
+  { key: "meisterHigh",       color: "#a16207" }, // 갈색 — 기존 라임과 과학고 녹색 충돌 회피
 ];
 
 function Kpi({ label, value, suffix, highlight }: { label: string; value: string | number; suffix?: string; highlight?: boolean }) {
@@ -60,8 +60,9 @@ export default function SchoolDetailView({ school }: { school: School }) {
     return [...set].sort((a, b) => a - b);
   }, [school]);
 
-  // 차트 라인 토글 (기본 모두 활성)
-  const [hiddenCats, setHiddenCats] = useState<Set<keyof CareerRow>>(new Set());
+  // 차트 라인 토글 — 첫 방문자(localStorage 비어있음)는 일반고만 hidden,
+  // 이후엔 localStorage 복원값 우선 (사용자가 한 번이라도 토글하면 그 상태 영속).
+  const [hiddenCats, setHiddenCats] = useState<Set<keyof CareerRow>>(new Set(["generalHigh"]));
 
   // localStorage 영속화 — 학교 간 공통 토글 상태
   useEffect(() => {
@@ -137,6 +138,32 @@ export default function SchoolDetailView({ school }: { school: School }) {
         <span className="text-slate-400 text-[10px] ml-1">({pct}%)</span>
       </span>
     );
+  }
+
+  // chip 토글로 visible 한 TREND_CATEGORIES 키만 합산하는 셀 값.
+  // - 분자: visible 카테고리의 row 인원 합
+  // - 분모: row.graduates
+  // 분모 0이면 비율은 "—", 분자만 0인 경우는 0 (0.0%) 정상 표시.
+  const visibleCatKeys = useMemo<(keyof CareerRow)[]>(
+    () => TREND_CATEGORIES.filter((c) => !hiddenCats.has(c.key)).map((c) => c.key),
+    [hiddenCats],
+  );
+  function selectedSum(row: CareerRow | null): number | null {
+    if (!row) return null;
+    let s = 0;
+    for (const k of visibleCatKeys) s += row[k];
+    return s;
+  }
+  function SelectedSumCell({ row }: { row: CareerRow | null }) {
+    const n = selectedSum(row);
+    if (n == null) return <span className="text-slate-300">—</span>;
+    return <span className="font-medium">{n}</span>;
+  }
+  function SelectedPctCell({ row }: { row: CareerRow | null }) {
+    if (!row) return <span className="text-slate-300">—</span>;
+    if (row.graduates <= 0) return <span className="text-slate-300">—</span>;
+    const n = selectedSum(row) ?? 0;
+    return <span className="font-medium text-brand-700">{(n / row.graduates * 100).toFixed(1)}%</span>;
   }
 
   return (
@@ -248,6 +275,33 @@ export default function SchoolDetailView({ school }: { school: School }) {
                 </td>
               </tr>
             ))}
+            {/* 칩 토글로 선택된 카테고리만의 합계·비율 — 위 차트 chip과 연동 */}
+            <tr className="border-t-2 border-brand-200 bg-brand-50/40 font-medium">
+              <td className="px-3 py-1.5 text-brand-800" title={CAREER_LABELS.eliteCount.description}>
+                {CAREER_LABELS.eliteCount.label}
+              </td>
+              {yearRows.map((r, i) => (
+                <td key={`sel-sum-${yearsAsc[i]}`} className="px-3 py-1.5 text-right">
+                  <SelectedSumCell row={r} />
+                </td>
+              ))}
+              <td className="px-3 py-1.5 text-right border-l border-slate-200 bg-brand-100/60">
+                <SelectedSumCell row={aggregatedTotal} />
+              </td>
+            </tr>
+            <tr className="border-t border-brand-100 bg-brand-50/40 font-medium">
+              <td className="px-3 py-1.5 text-brand-800" title={CAREER_LABELS.elitePct.description}>
+                {CAREER_LABELS.elitePct.label}
+              </td>
+              {yearRows.map((r, i) => (
+                <td key={`sel-pct-${yearsAsc[i]}`} className="px-3 py-1.5 text-right">
+                  <SelectedPctCell row={r} />
+                </td>
+              ))}
+              <td className="px-3 py-1.5 text-right border-l border-slate-200 bg-brand-100/60">
+                <SelectedPctCell row={aggregatedTotal} />
+              </td>
+            </tr>
           </tbody>
         </table>
       </section>

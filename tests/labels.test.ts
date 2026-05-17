@@ -30,9 +30,9 @@ describe("CAREER_LABELS — 단일 소스 일관성", () => {
     expect(CAREER_LABELS.scienceHigh.description).toContain("영재고");
   });
 
-  it("eliteCount / elitePct 라벨은 짧은 한글", () => {
-    expect(CAREER_LABELS.eliteCount.label).toBe("합계");
-    expect(CAREER_LABELS.elitePct.label).toBe("비율");
+  it("eliteCount / elitePct 라벨은 '선택 합계' / '선택 비율' (칩 토글 동적성 명시)", () => {
+    expect(CAREER_LABELS.eliteCount.label).toBe("선택 합계");
+    expect(CAREER_LABELS.elitePct.label).toBe("선택 비율");
   });
 });
 
