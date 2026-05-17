@@ -226,114 +226,132 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
     });
   }
 
+  const hasActiveFilters =
+    Object.values(state.textFilters).some((v) => v.trim()) ||
+    Object.values(state.chipFilters).some((v) => v.length > 0) ||
+    Object.values(state.ranges).some((r) => r?.min !== undefined || r?.max !== undefined);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* 상단 바 */}
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-slate-600">
-          {filtered.length.toLocaleString()}건 매치 · 헤더 클릭 정렬, <span className="inline-block px-1 text-xs">▾</span> 클릭 필터
+        <div className="text-sm text-slate-500">
+          <span className="font-medium text-slate-700">{filtered.length.toLocaleString()}건</span>
+          {" "}매치
+          <span className="text-slate-300 mx-2">·</span>
+          <span className="text-xs text-slate-400">헤더 클릭 정렬 · ▾ 클릭 필터</span>
         </div>
         <button
           onClick={() => setState(INITIAL)}
-          className="text-xs px-3 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100"
+          className={`text-xs px-3 py-1.5 rounded-md border transition ${
+            hasActiveFilters
+              ? "border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100"
+              : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+          }`}
         >
-          모든 필터 초기화
+          필터 초기화
         </button>
       </div>
 
-      {/* 활성 시·구 칩 요약 (선택한 칩 한눈에) */}
+      {/* 활성 시·구 칩 요약 */}
       {((state.chipFilters.si?.length ?? 0) + (state.chipFilters.gu?.length ?? 0)) > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded border border-brand-200 bg-brand-50 px-2 py-1.5">
-          <span className="text-xs text-slate-500 mr-1">선택:</span>
+        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2">
+          <span className="text-xs text-slate-500 mr-0.5">선택:</span>
           {(state.chipFilters.si ?? []).map((v) => (
             <button
               key={`active-si-${v}`}
               onClick={() => patch({ chipFilters: { ...state.chipFilters, si: (state.chipFilters.si ?? []).filter((x) => x !== v) } })}
-              className="text-xs px-2 py-0.5 rounded-full bg-white border border-brand-400 text-brand-800 hover:bg-brand-100 inline-flex items-center gap-1"
+              className="text-xs px-2 py-0.5 rounded-full bg-white border border-brand-300 text-brand-700 hover:bg-brand-100 inline-flex items-center gap-1"
               title="해제"
             >
-              <span className="text-[10px] text-brand-500">시</span>
+              <span className="text-[10px] text-brand-400 font-medium">시</span>
               {v}
-              <span className="text-brand-400">×</span>
+              <span className="text-brand-300 ml-0.5">×</span>
             </button>
           ))}
           {(state.chipFilters.gu ?? []).map((v) => (
             <button
               key={`active-gu-${v}`}
               onClick={() => patch({ chipFilters: { ...state.chipFilters, gu: (state.chipFilters.gu ?? []).filter((x) => x !== v) } })}
-              className="text-xs px-2 py-0.5 rounded-full bg-white border border-brand-400 text-brand-800 hover:bg-brand-100 inline-flex items-center gap-1"
+              className="text-xs px-2 py-0.5 rounded-full bg-white border border-brand-300 text-brand-700 hover:bg-brand-100 inline-flex items-center gap-1"
               title="해제"
             >
-              <span className="text-[10px] text-brand-500">구</span>
+              <span className="text-[10px] text-brand-400 font-medium">구</span>
               {v}
-              <span className="text-brand-400">×</span>
+              <span className="text-brand-300 ml-0.5">×</span>
             </button>
           ))}
           <button
             onClick={() => patch({ chipFilters: { ...state.chipFilters, si: [], gu: [] } })}
-            className="text-[10px] text-slate-500 hover:underline ml-1"
+            className="text-[10px] text-slate-400 hover:text-slate-600 ml-1"
           >
             전체 해제
           </button>
         </div>
       )}
 
-      {/* 연도 칩 multi — 빈 선택 = 전체 합산 */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-slate-500 mr-1">연도:</span>
-        {yearsAvailable.map((y) => {
-          const on = state.yearsSelected.includes(y);
-          return (
-            <button
-              key={y}
-              onClick={() => {
-                const next = on ? state.yearsSelected.filter((x) => x !== y) : [...state.yearsSelected, y].sort((a, b) => b - a);
-                patch({ yearsSelected: next });
-              }}
-              className={`text-xs px-2 py-0.5 rounded border transition cursor-pointer ${
-                on
-                  ? "bg-brand-600 border-brand-600 text-white"
-                  : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
-              }`}
-              title={`${y}년 진로 데이터${on ? " (선택 해제)" : " 포함"}`}
-            >
-              {y}
-            </button>
-          );
-        })}
-        <span className="text-[10px] text-slate-400 ml-1">
-          {state.yearsSelected.length === 0
-            ? `전체 ${yearsAvailable.length}개년 합산`
-            : `${state.yearsSelected.length}개년 합산`}
-        </span>
-      </div>
+      {/* 컨트롤 바 — 연도 + 컬럼 토글 */}
+      <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+        {/* 연도 칩 */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-400 font-medium mr-0.5">연도</span>
+          {yearsAvailable.map((y) => {
+            const on = state.yearsSelected.includes(y);
+            return (
+              <button
+                key={y}
+                onClick={() => {
+                  const next = on ? state.yearsSelected.filter((x) => x !== y) : [...state.yearsSelected, y].sort((a, b) => b - a);
+                  patch({ yearsSelected: next });
+                }}
+                className={`text-xs px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                  on
+                    ? "bg-brand-600 border-brand-600 text-white shadow-sm"
+                    : "bg-white border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-700"
+                }`}
+                title={`${y}년 진로 데이터${on ? " (선택 해제)" : " 포함"}`}
+              >
+                {y}
+              </button>
+            );
+          })}
+          <span className="text-[10px] text-slate-400">
+            {state.yearsSelected.length === 0
+              ? `전체 ${yearsAvailable.length}개년 합산`
+              : `${state.yearsSelected.length}개년 합산`}
+          </span>
+        </div>
 
-      {/* 표시 컬럼 토글 — 진학 학교 종류만 (학교명·지역·졸업·일반·합계·비율은 항상 표시) */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-slate-500 mr-1">진학 종류 표시:</span>
-        {COLS.filter((c) => c.toggleable).map((c) => {
-          const visible = !state.hiddenCols.includes(c.key);
-          return (
-            <button
-              key={c.key}
-              onClick={() => toggleColVisible(c.key)}
-              className={`text-xs px-2 py-0.5 rounded border transition cursor-pointer ${
-                visible
-                  ? "bg-brand-50 border-brand-500 text-brand-700"
-                  : "bg-white border-slate-300 text-slate-400 line-through hover:bg-slate-100"
-              }`}
-              title={visible ? "이 컬럼 숨기기" : "이 컬럼 보이기"}
-            >
-              {c.label}
-            </button>
-          );
-        })}
+        {/* 구분선 */}
+        <div className="hidden sm:block w-px bg-slate-200 self-stretch" />
+
+        {/* 컬럼 토글 */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-400 font-medium mr-0.5">진학 종류</span>
+          {COLS.filter((c) => c.toggleable).map((c) => {
+            const visible = !state.hiddenCols.includes(c.key);
+            return (
+              <button
+                key={c.key}
+                onClick={() => toggleColVisible(c.key)}
+                className={`text-xs px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                  visible
+                    ? "bg-brand-50 border-brand-400 text-brand-700 hover:bg-brand-100"
+                    : "bg-white border-slate-200 text-slate-400 line-through hover:border-slate-300"
+                }`}
+                title={visible ? "이 컬럼 숨기기" : "이 컬럼 보이기"}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* 표 */}
-      <div className="overflow-visible rounded border border-slate-200 bg-white">
+      <div className="overflow-visible rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm tabular-nums">
-          <thead className="bg-slate-100 text-slate-600 select-none">
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 select-none">
             <tr>
               {visibleCols.map((c) => {
                 const sortActive = state.sortKey === c.key;
@@ -343,20 +361,20 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
                   <th
                     key={c.key}
                     title={c.description ?? c.label}
-                    className={`relative px-3 py-2 font-medium ${c.align === "right" ? "text-right" : "text-left"} ${c.emphasis ? "border-l border-slate-200" : ""}`}
+                    className={`relative px-3 py-2.5 font-medium text-xs ${c.align === "right" ? "text-right" : "text-left"} ${c.emphasis ? "border-l border-slate-200" : ""}`}
                   >
                     <div className={`flex items-center gap-1 ${c.align === "right" ? "justify-end" : "justify-between"}`}>
                       <span
                         onClick={() => toggleSort(c.key)}
-                        className={`cursor-pointer hover:text-brand-700 ${sortActive ? "text-brand-700" : ""}`}
+                        className={`cursor-pointer hover:text-brand-600 ${sortActive ? "text-brand-600 font-semibold" : ""}`}
                       >
                         {c.label}
-                        <span className={`ml-1 text-xs ${sortActive ? "text-brand-600" : "text-slate-300"}`}>{dirSym}</span>
+                        <span className={`ml-1 ${sortActive ? "text-brand-500" : "text-slate-300"}`}>{dirSym}</span>
                       </span>
                       {c.filterType && (
                         <button
                           onClick={(e) => { e.stopPropagation(); setOpenFilter(openFilter === c.key ? null : c.key); }}
-                          className={`px-1 text-xs ${colFiltered ? "text-brand-600 font-bold" : "text-slate-400 hover:text-slate-700"}`}
+                          className={`px-1 text-xs leading-none ${colFiltered ? "text-brand-500 font-bold" : "text-slate-300 hover:text-slate-500"}`}
                           title={colFiltered ? "필터 활성" : "필터"}
                         >
                           {colFiltered ? "●" : "▾"}
@@ -380,10 +398,17 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
           </thead>
           <tbody>
             {slice.length === 0 && (
-              <tr><td colSpan={visibleCols.length} className="text-center text-slate-400 py-8">결과 없음</td></tr>
+              <tr>
+                <td colSpan={visibleCols.length} className="text-center text-slate-400 py-12 text-sm">
+                  조건에 맞는 학교가 없습니다
+                </td>
+              </tr>
             )}
-            {slice.map((s) => (
-              <tr key={s.SHL_IDF_CD} className="border-t border-slate-100 hover:bg-slate-50">
+            {slice.map((s, idx) => (
+              <tr
+                key={s.SHL_IDF_CD}
+                className={`border-t border-slate-100 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
+              >
                 {visibleCols.map((c) => {
                   const row = rowOf(s);
                   const display =
@@ -397,7 +422,7 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
                   return (
                     <td
                       key={c.key}
-                      className={`px-3 py-2 ${c.align === "right" ? "text-right" : ""} ${c.muted ? "text-slate-500 text-xs" : ""} ${c.emphasis ? "font-medium border-l border-slate-200" : ""} ${c.key === "elitePct" ? "font-bold text-brand-700" : ""}`}
+                      className={`px-3 py-2 ${c.align === "right" ? "text-right" : ""} ${c.muted ? "text-slate-400 text-xs" : ""} ${c.emphasis ? "font-medium border-l border-slate-200" : ""} ${c.key === "elitePct" ? "font-bold text-brand-600" : ""}`}
                     >
                       {isLink ? (
                         <button
@@ -409,7 +434,7 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
                               "popup=yes,width=960,height=900,scrollbars=yes,resizable=yes,noopener,noreferrer",
                             );
                           }}
-                          className="text-brand-700 hover:underline text-left"
+                          className="text-brand-600 hover:text-brand-800 hover:underline text-left font-medium"
                         >
                           {display}
                         </button>
@@ -425,12 +450,22 @@ export default function SchoolTable({ schools }: { schools: School[] }) {
 
       {/* 페이지네이션 */}
       {pageCount > 1 && (
-        <div className="flex items-center justify-center gap-2 text-sm">
-          <button onClick={() => patch({ page: Math.max(0, safePage - 1) })} disabled={safePage === 0}
-            className="px-3 py-1 rounded border border-slate-300 bg-white disabled:opacity-30">이전</button>
-          <span className="text-slate-600">{safePage + 1} / {pageCount}</span>
-          <button onClick={() => patch({ page: Math.min(pageCount - 1, safePage + 1) })} disabled={safePage >= pageCount - 1}
-            className="px-3 py-1 rounded border border-slate-300 bg-white disabled:opacity-30">다음</button>
+        <div className="flex items-center justify-center gap-2 text-sm pt-1">
+          <button
+            onClick={() => patch({ page: Math.max(0, safePage - 1) })}
+            disabled={safePage === 0}
+            className="px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-600 disabled:opacity-30 hover:border-brand-300 hover:text-brand-600"
+          >
+            이전
+          </button>
+          <span className="text-slate-500 text-xs tabular-nums">{safePage + 1} / {pageCount}</span>
+          <button
+            onClick={() => patch({ page: Math.min(pageCount - 1, safePage + 1) })}
+            disabled={safePage >= pageCount - 1}
+            className="px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-600 disabled:opacity-30 hover:border-brand-300 hover:text-brand-600"
+          >
+            다음
+          </button>
         </div>
       )}
     </div>
@@ -452,12 +487,12 @@ const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPo
   return (
     <div
       ref={ref}
-      className={`absolute top-full mt-1 z-20 rounded border border-slate-300 bg-white shadow-lg p-3 min-w-[240px] text-left font-normal text-slate-700 ${align === "right" ? "right-0" : "left-0"}`}
+      className={`absolute top-full mt-1.5 z-20 rounded-lg border border-slate-200 bg-white shadow-popover p-3 min-w-[240px] text-left font-normal text-slate-700 ${align === "right" ? "right-0" : "left-0"}`}
       onClick={(e) => e.stopPropagation()}
     >
       {col.filterType === "text" && (
         <div>
-          <label className="text-xs text-slate-500 block mb-1">{col.label} 포함 검색</label>
+          <label className="text-xs text-slate-400 block mb-1.5 font-medium">{col.label} 포함 검색</label>
           <input
             type="text"
             autoFocus
@@ -469,7 +504,7 @@ const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPo
               col.key === "gu"         ? "예: 영통, 수지, 분당..." :
               "검색어"
             }
-            className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+            className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-100"
           />
         </div>
       )}
@@ -480,7 +515,7 @@ const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPo
 
       {col.filterType === "range" && (
         <div className="space-y-2 min-w-[220px]">
-          <label className="text-xs text-slate-500 block">{col.label} 범위</label>
+          <label className="text-xs text-slate-400 block font-medium">{col.label} 범위</label>
           <div className="flex items-center gap-2 text-sm">
             <input
               type="number"
@@ -490,9 +525,9 @@ const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPo
                 patch({ ranges: { ...state.ranges, [col.key]: { ...state.ranges[col.key], min: v } } });
               }}
               placeholder="최소"
-              className="w-20 rounded border border-slate-300 px-2 py-1"
+              className="w-20 rounded-md border border-slate-200 px-2 py-1.5 focus:outline-none focus:border-brand-400"
             />
-            <span className="text-slate-400">~</span>
+            <span className="text-slate-300">~</span>
             <input
               type="number"
               value={state.ranges[col.key]?.max ?? ""}
@@ -501,7 +536,7 @@ const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPo
                 patch({ ranges: { ...state.ranges, [col.key]: { ...state.ranges[col.key], max: v } } });
               }}
               placeholder="최대"
-              className="w-20 rounded border border-slate-300 px-2 py-1"
+              className="w-20 rounded-md border border-slate-200 px-2 py-1.5 focus:outline-none focus:border-brand-400"
             />
           </div>
           {(state.ranges[col.key]?.min !== undefined || state.ranges[col.key]?.max !== undefined) && (
@@ -511,7 +546,7 @@ const FilterPopover = forwardRef<HTMLDivElement, PopoverProps>(function FilterPo
                 delete next[col.key];
                 patch({ ranges: next });
               }}
-              className="text-xs text-slate-500 hover:underline"
+              className="text-xs text-slate-400 hover:text-slate-600"
             >해제</button>
           )}
         </div>
@@ -559,13 +594,13 @@ function ChipFilterBody({
   return (
     <div className="space-y-2 min-w-[260px] max-w-[320px]">
       <div className="flex items-center justify-between">
-        <label className="text-xs text-slate-500">
+        <label className="text-xs text-slate-400 font-medium">
           {col.label} 선택 {selected.length > 0 && `(${selected.length} / ${pool.length})`}
         </label>
         {selected.length > 0 && (
           <button
             onClick={() => patch({ chipFilters: { ...state.chipFilters, [col.key]: [] } })}
-            className="text-[10px] text-slate-500 hover:underline"
+            className="text-[10px] text-slate-400 hover:text-slate-600"
           >해제</button>
         )}
       </div>
@@ -575,11 +610,11 @@ function ChipFilterBody({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={col.key === "si" ? "검색: 수원, 강남, 분당…" : "검색: 영통, 분당, 수지…"}
-        className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+        className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:border-brand-400"
       />
       {selected.length > 0 && (
-        <div className="border-b border-slate-200 pb-2">
-          <div className="text-[10px] text-slate-500 mb-1">선택됨 ({selected.length})</div>
+        <div className="border-b border-slate-100 pb-2">
+          <div className="text-[10px] text-slate-400 mb-1">선택됨 ({selected.length})</div>
           <div className="flex flex-wrap gap-1">
             {selected.map((opt) => (
               <button
@@ -589,7 +624,7 @@ function ChipFilterBody({
                 title="해제"
               >
                 {opt}
-                <span className="text-brand-200">×</span>
+                <span className="text-brand-200 text-[10px]">×</span>
               </button>
             ))}
           </div>
@@ -602,7 +637,7 @@ function ChipFilterBody({
           <button
             key={opt}
             onClick={() => patch({ chipFilters: { ...state.chipFilters, [col.key]: [...selected, opt] } })}
-            className="text-xs px-2 py-0.5 rounded-full border bg-white border-slate-300 text-slate-700 hover:bg-slate-100 transition"
+            className="text-xs px-2 py-0.5 rounded-full border bg-white border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-700 transition"
           >
             {opt}
           </button>

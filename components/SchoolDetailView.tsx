@@ -42,10 +42,14 @@ const TREND_CATEGORIES: { key: keyof CareerRow; color: string }[] = [
 
 function Kpi({ label, value, suffix, highlight }: { label: string; value: string | number; suffix?: string; highlight?: boolean }) {
   return (
-    <div className={`rounded border p-4 ${highlight ? "border-brand-500 bg-brand-50" : "border-slate-200 bg-white"}`}>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-1 text-2xl font-bold tabular-nums ${highlight ? "text-brand-700" : "text-slate-900"}`}>
-        {value}{suffix && <span className="text-sm font-normal text-slate-500 ml-1">{suffix}</span>}
+    <div className={`rounded-lg border bg-white p-4 relative overflow-hidden ${highlight ? "border-brand-200" : "border-slate-200"}`}>
+      {/* 왼쪽 강조 바 */}
+      {highlight && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-500 rounded-l-lg" />
+      )}
+      <div className={`text-xs font-medium ${highlight ? "text-brand-600 pl-1" : "text-slate-400 "}`}>{label}</div>
+      <div className={`mt-1.5 text-2xl font-semibold tabular-nums leading-none ${highlight ? "text-brand-700 pl-1" : "text-slate-800"}`}>
+        {value}{suffix && <span className="text-sm font-normal text-slate-400 ml-1">{suffix}</span>}
       </div>
     </div>
   );
@@ -118,7 +122,7 @@ export default function SchoolDetailView({ school }: { school: School }) {
 
   if (yearsAsc.length === 0) {
     return (
-      <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
         진로 데이터를 수집하지 못했습니다 (졸업자 없음 또는 공시 미발견).
       </div>
     );
@@ -126,7 +130,7 @@ export default function SchoolDetailView({ school }: { school: School }) {
 
   /** 한 셀: 인원 + 비율 % (graduates는 인원만) */
   function Cell({ row, field, total }: { row: CareerRow | null; field: keyof CareerRow; total: CareerRow }) {
-    if (!row) return <span className="text-slate-300">—</span>;
+    if (!row) return <span className="text-slate-200">—</span>;
     const n = row[field];
     if (field === "graduates") return <span>{n}</span>;
     const denom = total.graduates;
@@ -162,14 +166,14 @@ export default function SchoolDetailView({ school }: { school: School }) {
   };
   const renderSelectedSum = (row: CareerRow | null) => {
     const n = selectedSum(row);
-    if (n == null) return <span className="text-slate-300">—</span>;
+    if (n == null) return <span className="text-slate-200">—</span>;
     return <span className="font-medium">{n}</span>;
   };
   const renderSelectedPct = (row: CareerRow | null) => {
-    if (!row) return <span className="text-slate-300">—</span>;
-    if (row.graduates <= 0) return <span className="text-slate-300">—</span>;
+    if (!row) return <span className="text-slate-200">—</span>;
+    if (row.graduates <= 0) return <span className="text-slate-200">—</span>;
     const n = selectedSum(row) ?? 0;
-    return <span className="font-medium text-brand-700">{(n / row.graduates * 100).toFixed(1)}%</span>;
+    return <span className="font-semibold text-brand-600">{(n / row.graduates * 100).toFixed(1)}%</span>;
   };
 
   return (
@@ -179,73 +183,73 @@ export default function SchoolDetailView({ school }: { school: School }) {
         <Kpi label={CAREER_LABELS.graduates.label} value={aggregatedTotal.graduates} suffix="명" />
         <Kpi label={CAREER_LABELS.eliteCount.label} value={elite} suffix="명" highlight />
         <Kpi label={CAREER_LABELS.elitePct.label} value={ePct} suffix="%" highlight />
-        <Kpi label="공시 연도" value={`${yearsAsc[0]}~${yearsAsc[yearsAsc.length - 1]} (${yearsAsc.length}개년)`} />
+        <Kpi label="공시 연도" value={`${yearsAsc[0]}~${yearsAsc[yearsAsc.length - 1]}`} suffix={`(${yearsAsc.length}개년)`} />
       </section>
 
       {/* 연도별 트렌드 — 카테고리 토글 chip + 인원·비율 line 2 차트 */}
       {yearsAsc.length > 1 && (
-        <section className="mb-6 rounded border border-slate-200 bg-white p-4">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <h2 className="text-sm font-medium text-slate-700">연도별 진로 트렌드</h2>
-            <span className="text-[10px] text-slate-400">·  카테고리 칩 클릭으로 라인 토글</span>
+        <section className="mb-6 rounded-lg border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <h2 className="text-sm font-semibold text-slate-700">연도별 진로 트렌드</h2>
+            <span className="text-[11px] text-slate-400">카테고리 칩 클릭으로 라인 토글</span>
           </div>
           {/* 카테고리 chip 범례 */}
-          <div className="flex flex-wrap gap-1.5 mb-3">
+          <div className="flex flex-wrap gap-1.5 mb-4">
             {TREND_CATEGORIES.map((cat) => {
               const on = !hiddenCats.has(cat.key);
               return (
                 <button
                   key={cat.key}
                   onClick={() => toggleCat(cat.key)}
-                  className={`text-xs px-2 py-0.5 rounded-full border transition cursor-pointer inline-flex items-center gap-1 ${on ? "" : "opacity-40 line-through"}`}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition cursor-pointer inline-flex items-center gap-1.5 ${on ? "" : "opacity-35"}`}
                   style={{
-                    borderColor: on ? cat.color : "#cbd5e1",
+                    borderColor: on ? cat.color : "#e2e8f0",
                     color: on ? cat.color : "#94a3b8",
-                    backgroundColor: on ? `${cat.color}14` : "white",
+                    backgroundColor: on ? `${cat.color}18` : "white",
                   }}
                 >
-                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: cat.color }} />
+                  <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: on ? cat.color : "#cbd5e1" }} />
                   {CAREER_LABELS[cat.key].label}
                 </button>
               );
             })}
           </div>
 
-          <div className="mb-2 text-xs text-slate-500">인원 (명)</div>
-          <div className="w-full h-60 mb-4">
+          <div className="mb-1.5 text-xs text-slate-400 font-medium">인원 (명)</div>
+          <div className="w-full h-60 mb-5">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={countData} margin={{ top: 4, right: 16, bottom: 8, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="year" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} />
                 <Tooltip
                   formatter={(v: number, name: string) => [`${v}명`, name]}
                   labelFormatter={(y) => `${y}년`}
-                  contentStyle={{ fontSize: 12 }}
+                  contentStyle={{ fontSize: 12, borderRadius: "8px", border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}
                 />
                 {TREND_CATEGORIES.filter((c) => !hiddenCats.has(c.key)).map((c) => (
                   <Line key={c.key} type="monotone" dataKey={CAREER_LABELS[c.key].label}
-                    stroke={c.color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    stroke={c.color} strokeWidth={2} dot={{ r: 3, strokeWidth: 0, fill: c.color }} activeDot={{ r: 5, strokeWidth: 0 }} />
                 ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="mb-2 text-xs text-slate-500">비율 (%, 졸업자 대비)</div>
+          <div className="mb-1.5 text-xs text-slate-400 font-medium">비율 (%, 졸업자 대비)</div>
           <div className="w-full h-60">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={pctData} margin={{ top: 4, right: 16, bottom: 8, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="year" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickFormatter={(v) => `${v}%`} />
                 <Tooltip
                   formatter={(v: number, name: string) => [`${v.toFixed(1)}%`, name]}
                   labelFormatter={(y) => `${y}년`}
-                  contentStyle={{ fontSize: 12 }}
+                  contentStyle={{ fontSize: 12, borderRadius: "8px", border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}
                 />
                 {TREND_CATEGORIES.filter((c) => !hiddenCats.has(c.key)).map((c) => (
                   <Line key={c.key} type="monotone" dataKey={CAREER_LABELS[c.key].label}
-                    stroke={c.color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    stroke={c.color} strokeWidth={2} dot={{ r: 3, strokeWidth: 0, fill: c.color }} activeDot={{ r: 5, strokeWidth: 0 }} />
                 ))}
               </LineChart>
             </ResponsiveContainer>
@@ -254,57 +258,57 @@ export default function SchoolDetailView({ school }: { school: School }) {
       )}
 
       {/* 연도 매트릭스 표 — row=카테고리, col=연도들 + 합계 */}
-      <section className="rounded border border-slate-200 bg-white overflow-x-auto">
+      <section className="rounded-lg border border-slate-200 bg-white overflow-x-auto mb-6">
         <table className="min-w-full text-sm tabular-nums">
-          <thead className="bg-slate-100 text-slate-600">
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
             <tr>
-              <th className="text-left px-3 py-2 font-medium">카테고리</th>
+              <th className="text-left px-3 py-2.5 font-medium text-xs">카테고리</th>
               {yearsAsc.map((y) => (
-                <th key={y} className="text-right px-3 py-2 font-medium">{y}</th>
+                <th key={y} className="text-right px-3 py-2.5 font-medium text-xs">{y}</th>
               ))}
-              <th className="text-right px-3 py-2 font-medium border-l border-slate-200 bg-brand-50/40 text-brand-700">
+              <th className="text-right px-3 py-2.5 font-medium text-xs border-l border-slate-200 bg-brand-50/50 text-brand-600">
                 합계 ({yearsAsc.length}년)
               </th>
             </tr>
           </thead>
           <tbody>
             {ROW_KEYS.map(({ key, emphasis }) => (
-              <tr key={key} className={`border-t border-slate-100 ${emphasis ? "bg-slate-50/60 font-medium" : ""}`}>
-                <td className="px-3 py-1.5 text-slate-700" title={CAREER_LABELS[key].description}>{CAREER_LABELS[key].label}</td>
+              <tr key={key} className={`border-t border-slate-100 ${emphasis ? "bg-slate-50/50 font-medium" : ""}`}>
+                <td className="px-3 py-1.5 text-slate-600 text-sm" title={CAREER_LABELS[key].description}>{CAREER_LABELS[key].label}</td>
                 {yearRows.map((r, i) => (
                   <td key={yearsAsc[i]} className="px-3 py-1.5 text-right">
                     <Cell row={r} field={key} total={r ?? aggregatedTotal} />
                   </td>
                 ))}
-                <td className="px-3 py-1.5 text-right border-l border-slate-200 bg-brand-50/40">
+                <td className="px-3 py-1.5 text-right border-l border-slate-200 bg-brand-50/50">
                   <Cell row={aggregatedTotal} field={key} total={aggregatedTotal} />
                 </td>
               </tr>
             ))}
             {/* 칩 토글로 선택된 카테고리만의 합계·비율 — 위 차트 chip과 연동 */}
             <tr className="border-t-2 border-brand-200 bg-brand-50/40 font-medium">
-              <td className="px-3 py-1.5 text-brand-800" title={CAREER_LABELS.eliteCount.description}>
+              <td className="px-3 py-2 text-brand-700 text-sm" title={CAREER_LABELS.eliteCount.description}>
                 {CAREER_LABELS.eliteCount.label}
               </td>
               {yearRows.map((r, i) => (
-                <td key={`sel-sum-${yearsAsc[i]}`} className="px-3 py-1.5 text-right">
+                <td key={`sel-sum-${yearsAsc[i]}`} className="px-3 py-2 text-right">
                   {renderSelectedSum(r)}
                 </td>
               ))}
-              <td className="px-3 py-1.5 text-right border-l border-slate-200 bg-brand-100/60">
+              <td className="px-3 py-2 text-right border-l border-slate-200 bg-brand-100/50">
                 {renderSelectedSum(aggregatedTotal)}
               </td>
             </tr>
             <tr className="border-t border-brand-100 bg-brand-50/40 font-medium">
-              <td className="px-3 py-1.5 text-brand-800" title={CAREER_LABELS.elitePct.description}>
+              <td className="px-3 py-2 text-brand-700 text-sm" title={CAREER_LABELS.elitePct.description}>
                 {CAREER_LABELS.elitePct.label}
               </td>
               {yearRows.map((r, i) => (
-                <td key={`sel-pct-${yearsAsc[i]}`} className="px-3 py-1.5 text-right">
+                <td key={`sel-pct-${yearsAsc[i]}`} className="px-3 py-2 text-right">
                   {renderSelectedPct(r)}
                 </td>
               ))}
-              <td className="px-3 py-1.5 text-right border-l border-slate-200 bg-brand-100/60">
+              <td className="px-3 py-2 text-right border-l border-slate-200 bg-brand-100/50">
                 {renderSelectedPct(aggregatedTotal)}
               </td>
             </tr>

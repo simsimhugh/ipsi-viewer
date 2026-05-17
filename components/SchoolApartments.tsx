@@ -75,10 +75,10 @@ function sortValue(a: ApartmentSummary, key: SortKey): number | string | null {
 }
 
 function SaleCell({ s }: { s: SaleLatest | null }) {
-  if (!s) return <span className="text-slate-300">-</span>;
+  if (!s) return <span className="text-slate-200">-</span>;
   return (
     <>
-      <div>{fmtPriceEok(s.priceWon)}</div>
+      <div className="font-medium">{fmtPriceEok(s.priceWon)}</div>
       <div className="text-[10px] text-slate-400 font-normal">
         {s.areaM2 != null ? `전용 ${Math.round(s.areaM2)}㎡ · ` : ""}{fmtYearMonth(s.contractDate)}
       </div>
@@ -87,10 +87,10 @@ function SaleCell({ s }: { s: SaleLatest | null }) {
 }
 
 function JeonseCell({ j }: { j: JeonseLatest | null }) {
-  if (!j) return <span className="text-slate-300">-</span>;
+  if (!j) return <span className="text-slate-200">-</span>;
   return (
     <>
-      <div>{fmtManWon(j.depositManWon)}</div>
+      <div className="font-medium">{fmtManWon(j.depositManWon)}</div>
       <div className="text-[10px] text-slate-400 font-normal">
         {j.areaM2 != null ? `전용 ${Math.round(j.areaM2)}㎡ · ` : ""}{fmtYearMonth(j.contractDate)}
       </div>
@@ -99,10 +99,10 @@ function JeonseCell({ j }: { j: JeonseLatest | null }) {
 }
 
 function WolseCell({ w }: { w: WolseLatest | null }) {
-  if (!w) return <span className="text-slate-300">-</span>;
+  if (!w) return <span className="text-slate-200">-</span>;
   return (
     <>
-      <div>{fmtManWon(w.depositManWon)} / {w.monthlyRentManWon.toLocaleString()}</div>
+      <div className="font-medium">{fmtManWon(w.depositManWon)} / <span className="text-slate-600">{w.monthlyRentManWon.toLocaleString()}</span></div>
       <div className="text-[10px] text-slate-400 font-normal">
         {w.areaM2 != null ? `전용 ${Math.round(w.areaM2)}㎡ · ` : ""}{fmtYearMonth(w.contractDate)}
       </div>
@@ -149,52 +149,52 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
     return (
       <th
         onClick={() => toggleSort(k)}
-        className={`px-3 py-2 font-medium cursor-pointer select-none hover:text-brand-700 ${align === "right" ? "text-right" : "text-left"} ${active ? "text-brand-700" : ""}`}
+        className={`px-3 py-2.5 font-medium text-xs cursor-pointer select-none hover:text-brand-600 ${align === "right" ? "text-right" : "text-left"} ${active ? "text-brand-600" : ""}`}
       >
         {label}
-        <span className={`ml-1 text-xs ${active ? "text-brand-600" : "text-slate-300"}`}>{sym}</span>
+        <span className={`ml-1 ${active ? "text-brand-500" : "text-slate-300"}`}>{sym}</span>
       </th>
     );
   }
 
   return (
-    <section className="mt-6 rounded border border-slate-200 bg-white p-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-        <h2 className="text-sm font-medium text-slate-700">주변 아파트 단지</h2>
+    <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <h2 className="text-sm font-semibold text-slate-700">주변 아파트 단지</h2>
         {apartments.length > 0 && (
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-slate-500">표시:</span>
+            <span className="text-slate-400">표시:</span>
             {LIMIT_OPTIONS.map((opt) => {
               const on = limit === opt.value;
               return (
                 <button
                   key={opt.label}
                   onClick={() => setLimit(opt.value)}
-                  className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                  className={`px-2 py-0.5 rounded-md border transition cursor-pointer ${
                     on
-                      ? "bg-brand-600 border-brand-600 text-white"
-                      : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
+                      ? "bg-brand-600 border-brand-600 text-white shadow-sm"
+                      : "bg-white border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-700"
                   }`}
                 >
                   {opt.label}
                 </button>
               );
             })}
-            <span className="text-[10px] text-slate-400 ml-1">
+            <span className="text-[10px] text-slate-400 ml-0.5">
               {visible.length}/{apartments.length}
             </span>
           </div>
         )}
       </div>
       {apartments.length === 0 ? (
-        <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 leading-relaxed">
           주변 아파트 데이터 준비 중입니다. 학교 좌표 기준 반경 1km 내 단지 매핑·국토부 매매·전월세
           데이터가 순차 도착하는 대로 이 영역에 표시됩니다.
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm tabular-nums">
-            <thead className="bg-slate-100 text-slate-600">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
               <tr>
                 <HeaderCell k="name" label="단지명" />
                 <HeaderCell k="builtYear" label="준공" align="right" />
@@ -205,32 +205,31 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
               </tr>
             </thead>
             <tbody>
-              {visible.map((a) => (
-                <tr key={a.id} className="border-t border-slate-100">
-                  <td className="px-3 py-1.5 text-slate-800">
+              {visible.map((a, idx) => (
+                <tr key={a.id} className={`border-t border-slate-100 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
+                  <td className="px-3 py-2 text-slate-800">
                     <a
                       href={naverRealEstateUrl(a.name, a.sigungu)}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="text-brand-700 hover:underline"
+                      className="text-brand-600 hover:text-brand-800 hover:underline font-medium"
                       title="네이버에서 검색"
                     >
                       {a.name}
                     </a>
                   </td>
-                  <td className="px-3 py-1.5 text-right">{a.builtYear ?? "-"}</td>
-                  <td className="px-3 py-1.5 text-right">{fmtDistance(a.distanceM)}</td>
-                  <td className="px-3 py-1.5 text-right"><SaleCell s={a.latestSale} /></td>
-                  <td className="px-3 py-1.5 text-right"><JeonseCell j={a.latestJeonse} /></td>
-                  <td className="px-3 py-1.5 text-right"><WolseCell w={a.latestWolse} /></td>
+                  <td className="px-3 py-2 text-right text-slate-600">{a.builtYear ?? "-"}</td>
+                  <td className="px-3 py-2 text-right text-slate-600">{fmtDistance(a.distanceM)}</td>
+                  <td className="px-3 py-2 text-right"><SaleCell s={a.latestSale} /></td>
+                  <td className="px-3 py-2 text-right"><JeonseCell j={a.latestJeonse} /></td>
+                  <td className="px-3 py-2 text-right"><WolseCell w={a.latestWolse} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="mt-2 text-[11px] text-slate-400">
-            * 거리는 학교 좌표 기준 반경 1km 내 단지 (학구도 폴리곤 적재 전 임시).
-            매매·전세·월세는 단지별 가장 최근 거래 1건 (국토부 공개 데이터).
-            단지명 클릭 시 네이버 검색.
+          <div className="mt-3 text-[11px] text-slate-400 leading-relaxed">
+            거리는 학교 좌표 기준 반경 1km 내 단지 (학구도 폴리곤 적재 전 임시).
+            매매·전세·월세는 단지별 가장 최근 거래 1건 (국토부 공개 데이터). 단지명 클릭 시 네이버 검색.
           </div>
         </div>
       )}

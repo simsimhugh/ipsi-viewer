@@ -4,11 +4,23 @@
 
 :root {
   color-scheme: light;
+  --brand-50:  #EEF4FF;
+  --brand-100: #D9E6FD;
+  --brand-200: #B3CCFB;
+  --brand-400: #4D8AF0;
+  --brand-500: #1D5BD4;
+  --brand-600: #1751BF;
+  --brand-700: #1B4F9C;
+  --brand-800: #163E7A;
 }
 
 html, body {
-  @apply bg-slate-50 text-slate-900;
+  background-color: #F7F8FA;
+  color: #1A1F2E;
+  font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', ui-sans-serif, system-ui, sans-serif;
   font-feature-settings: "tnum" 1; /* 숫자 폭 일정하게 — 표 정렬용 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 table {
@@ -18,6 +30,18 @@ table {
 
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/* 인터랙션 요소 전환 */
+button, a {
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  transition-duration: 130ms;
+  transition-timing-function: ease-out;
+}
+
+/* 테이블 row hover */
+tbody tr:hover {
+  background-color: #EEF4FF !important;
 }
 
 /* production 보호 layer — ProtectionLayer.tsx에서 body에 .protected 토글 */
