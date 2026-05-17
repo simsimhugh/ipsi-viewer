@@ -197,3 +197,9 @@ create policy "apartment_school_map public read" on apartment_school_map for sel
 
 grant select on school_districts, apartments, transactions, apartment_school_map to anon, authenticated;
 grant all    on school_districts, apartments, transactions, apartment_school_map to service_role;
+
+-- 부동산 테이블 bigserial 시퀀스 — service_role가 INSERT 시 nextval 호출하므로 USAGE 필수.
+-- (line 84의 "all sequences"는 적용 시점 기준이라 새로 만든 시퀀스에 누락될 수 있음 — 명시 보강)
+grant usage, select on sequence apartments_id_seq        to service_role;
+grant usage, select on sequence transactions_id_seq      to service_role;
+grant usage, select on sequence school_districts_id_seq  to service_role;
