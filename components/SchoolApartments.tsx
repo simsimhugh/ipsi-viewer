@@ -52,7 +52,7 @@ function naverMapUrl(name: string): string {
 
 /** 구글검색: 아실·호갱노노 등 비교 사이트가 결과에 포함됨. */
 function googleSearchUrl(name: string): string {
-  return `https://www.google.com/search?q=${encodeURIComponent(name + " 실거래가")}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(name)}`;
 }
 
 /** 정렬 키: 매매/전세/월세는 가격(보증금) 숫자값으로 비교. */
@@ -228,7 +228,7 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
                           href={googleSearchUrl(a.name)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label={`${a.name} 구글에서 실거래가 검색`}
+                          aria-label={`${a.name} 구글에서 검색`}
                           className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 rounded px-1.5 py-0.5 transition-colors"
                         >
                           구글
@@ -248,7 +248,7 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
           <div className="mt-2 text-[11px] text-slate-400">
             * 거리는 학교 좌표 기준 반경 1km 내 단지 (학구도 폴리곤 적재 전 임시).
             매매·전세·월세는 단지별 가장 최근 거래 1건 (국토부 공개 데이터).
-            단지명 옆 chip: 네이버지도(좌표 POI 매칭) · 구글(실거래가 검색 — 아실·호갱노노 포함).
+            단지명 옆 chip: 네이버지도(좌표 POI 매칭) · 구글(단지명 검색 — 아실·호갱노노 포함).
           </div>
         </div>
       )}
