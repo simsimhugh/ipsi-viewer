@@ -45,10 +45,14 @@ function fmtYearMonth(date: string): string {
   return date.slice(0, 7);
 }
 
-function naverRealEstateUrl(name: string, _sigungu: string | null): string {
-  // m.land.naver.com/search/result/<단지명> → 302로 단지 ID 페이지 자동 redirect.
-  // 매칭 실패 시 검색 결과 페이지로 (네이버 자체 fallback).
-  return `https://m.land.naver.com/search/result/${encodeURIComponent(name)}`;
+/** 네이버지도: 좌표 POI 매칭으로 국토부/네이버 명칭 차이를 우회. */
+function naverMapUrl(name: string): string {
+  return `https://map.naver.com/p/search/${encodeURIComponent(name)}`;
+}
+
+/** 구글검색: 아실·호갱노노 등 비교 사이트가 결과에 포함됨. */
+function googleSearchUrl(name: string): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(name)}`;
 }
 
 /** 정렬 키: 매매/전세/월세는 가격(보증금) 숫자값으로 비교. */
@@ -208,15 +212,29 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
               {visible.map((a) => (
                 <tr key={a.id} className="border-t border-slate-100">
                   <td className="px-3 py-1.5 text-slate-800">
-                    <a
-                      href={naverRealEstateUrl(a.name, a.sigungu)}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="text-brand-700 hover:underline"
-                      title="네이버에서 검색"
-                    >
-                      {a.name}
-                    </a>
+                    <div className="flex flex-col gap-0.5">
+                      <span>{a.name}</span>
+                      <div className="flex gap-1">
+                        <a
+                          href={naverMapUrl(a.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`${a.name} 네이버지도에서 보기`}
+                          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 rounded px-1.5 py-0.5 transition-colors"
+                        >
+                          네이버지도
+                        </a>
+                        <a
+                          href={googleSearchUrl(a.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`${a.name} 구글에서 검색`}
+                          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 rounded px-1.5 py-0.5 transition-colors"
+                        >
+                          구글
+                        </a>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-3 py-1.5 text-right">{a.builtYear ?? "-"}</td>
                   <td className="px-3 py-1.5 text-right">{fmtDistance(a.distanceM)}</td>
@@ -230,7 +248,7 @@ export default function SchoolApartments({ apartments }: { apartments: Apartment
           <div className="mt-2 text-[11px] text-slate-400">
             * 거리는 학교 좌표 기준 반경 1km 내 단지 (학구도 폴리곤 적재 전 임시).
             매매·전세·월세는 단지별 가장 최근 거래 1건 (국토부 공개 데이터).
-            단지명 클릭 시 네이버 검색.
+            단지명 옆 chip: 네이버지도(좌표 POI 매칭) · 구글(단지명 검색 — 아실·호갱노노 포함).
           </div>
         </div>
       )}
