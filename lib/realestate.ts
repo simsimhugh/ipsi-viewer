@@ -67,9 +67,12 @@ export interface ApartmentSummary {
 interface AsmRow {
   apt_id: number;
   distance_m: number | null;
+  in_district: boolean | null;
   apartments: {
     id: number;
     name: string;
+    sigungu: string | null;
+    households: number | null;
     built_year: number | null;
   } | null;
 }
@@ -98,11 +101,9 @@ export async function loadApartmentsForSchool(shlIdfCd: string): Promise<Apartme
   if (!sb) return [];
 
   // 1) 매핑 + 단지 정보
-  // SchoolApartments 가 실제 사용하는 컬럼만 — sigungu/households/in_district 제외 (UI 미사용).
-  // 응답 size 절감 + nested join row size 감소.
   const { data: asm, error: asmErr } = await sb
     .from("apartment_school_map")
-    .select("apt_id, distance_m, apartments(id, name, built_year)")
+    .select("apt_id, distance_m, in_district, apartments(id, name, sigungu, households, built_year)")
     .eq("shl_idf_cd", shlIdfCd);
 
   if (asmErr) {
@@ -114,26 +115,27 @@ export async function loadApartmentsForSchool(shlIdfCd: string): Promise<Apartme
 
   const aptIds = rows.map((r) => r.apt_id);
 
-  // 2)/3) 매매 + 전월세 거래 병렬 fetch (각 apt 최근 1건 선택은 JS에서).
-  // 이전엔 매매 → 전월세 직렬 호출이었으나, asm 이후 의존성 없어 Promise.all 로 ~2배 절감.
+  // 2) 매매 거래 전체 (각 apt 최근 1건 선택은 JS에서)
   // PostgREST default page limit 1000 — 충분 (학교당 단지 수십 × 거래 평균 < 1000).
   // .order desc + 첫 hit 사용이라 누락 위험 낮음. limit을 5000으로 명시해 안전성 확보.
-  const [txRes, rentRes] = await Promise.all([
-    sb.from("transactions")
-      .select("apt_id, area_m2, price_won, contract_date")
-      .in("apt_id", aptIds)
-      .order("contract_date", { ascending: false })
-      .limit(5000),
-    sb.from("rentals")
-      .select("apt_id, area_m2, deposit_man_won, monthly_rent_man_won, contract_date")
-      .in("apt_id", aptIds)
-      .order("contract_date", { ascending: false })
-      .limit(5000),
-  ]);
-  const txRows = (txRes.error ? [] : (txRes.data ?? [])) as unknown as TxRow[];
-  if (txRes.error) console.warn(`[realestate] transactions: ${txRes.error.message}`);
-  const rentRows = (rentRes.error ? [] : (rentRes.data ?? [])) as unknown as RentRow[];
-  if (rentRes.error) console.warn(`[realestate] rentals: ${rentRes.error.message}`);
+  const { data: tx, error: txErr } = await sb
+    .from("transactions")
+    .select("apt_id, area_m2, price_won, contract_date")
+    .in("apt_id", aptIds)
+    .order("contract_date", { ascending: false })
+    .limit(5000);
+  const txRows = (txErr ? [] : (tx ?? [])) as unknown as TxRow[];
+  if (txErr) console.warn(`[realestate] transactions: ${txErr.message}`);
+
+  // 3) 전월세 거래 전체
+  const { data: rent, error: rentErr } = await sb
+    .from("rentals")
+    .select("apt_id, area_m2, deposit_man_won, monthly_rent_man_won, contract_date")
+    .in("apt_id", aptIds)
+    .order("contract_date", { ascending: false })
+    .limit(5000);
+  const rentRows = (rentErr ? [] : (rent ?? [])) as unknown as RentRow[];
+  if (rentErr) console.warn(`[realestate] rentals: ${rentErr.message}`);
 
   // 4) 단지별 최신 1건 — contract_date desc 정렬된 상태에서 apt_id 첫 hit 사용 (면적 무관).
   const saleByApt = new Map<number, SaleLatest>();
@@ -176,12 +178,11 @@ export async function loadApartmentsForSchool(shlIdfCd: string): Promise<Apartme
     .map((r) => ({
       id: r.apartments!.id,
       name: r.apartments!.name,
-      // UI 미사용 필드 — interface 호환을 위해 null/false 로 채움.
-      sigungu: null,
-      households: null,
+      sigungu: r.apartments!.sigungu,
+      households: r.apartments!.households,
       builtYear: r.apartments!.built_year,
       distanceM: r.distance_m,
-      inDistrict: false,
+      inDistrict: !!r.in_district,
       latestSale: saleByApt.get(r.apt_id) ?? null,
       latestJeonse: jeonseByApt.get(r.apt_id) ?? null,
       latestWolse: wolseByApt.get(r.apt_id) ?? null,
