@@ -31,13 +31,28 @@ const CAREERS_MAIN_COLUMNS = [
   "employed", "alt_education", "unemployed",
 ].join(",");
 
+// 메인 페이지 전용 schools 컬럼 — SchoolTable이 실제 사용하는 필드만.
+// address/lat/lng/sd_schul_code 제외 (메인 테이블에 미노출, 상세 페이지만 사용).
+const SCHOOLS_MAIN_COLUMNS = [
+  "shl_idf_cd", "school_name",
+  "sido_code", "sido_name",
+  "kind", "sigungu",
+].join(",");
+
 // PostgREST는 max-rows 1000 (Supabase 기본). 페이지네이션으로 전량 fetch.
+// applyFilters: builder에 추가 filter (eq/in 등) 체이닝 hook — 선택.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAllRows<T>(sb: any, table: string, columns: string = "*"): Promise<T[]> {
+async function fetchAllRows<T>(
+  sb: any, table: string, columns: string = "*",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  applyFilters?: (q: any) => any,
+): Promise<T[]> {
   const PAGE = 1000;
   const all: T[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await sb.from(table).select(columns).range(from, from + PAGE - 1);
+    let q = sb.from(table).select(columns).range(from, from + PAGE - 1);
+    if (applyFilters) q = applyFilters(q);
+    const { data, error } = await q;
     if (error) throw new Error(`${table} fetch (range ${from}~${from + PAGE - 1}): ${error.message}`);
     if (!data || data.length === 0) break;
     all.push(...(data as T[]));
@@ -46,12 +61,15 @@ async function fetchAllRows<T>(sb: any, table: string, columns: string = "*"): P
   return all;
 }
 
+// 일부 컬럼은 메인 페이지 projection 으로 제외될 수 있어 옵셔널.
+// schoolsFromSB에서 모두 null-safe 처리됨.
 type SchoolRowSB = {
   shl_idf_cd: string; school_name: string; sido_code: string; sido_name: string;
-  sd_schul_code: string | null; kind: School["kind"];
-  address: string | null; sigungu: string | null;
-  si: string | null; gu: string | null;
-  lat: number | null; lng: number | null;
+  kind: School["kind"];
+  sd_schul_code?: string | null;
+  address?: string | null; sigungu?: string | null;
+  si?: string | null; gu?: string | null;
+  lat?: number | null; lng?: number | null;
 };
 
 type CareerRowMainSB = {
@@ -97,8 +115,8 @@ function schoolsFromSB(
       kind: s.kind,
       address: s.address ?? undefined,
       sigungu: s.sigungu ?? undefined,
-      lat: s.lat,
-      lng: s.lng,
+      lat: s.lat ?? null,
+      lng: s.lng ?? null,
       careersByYear: byYear,
       career: newest && byYear ? byYear[String(newest)] : null,
     };
@@ -147,8 +165,11 @@ async function loadFromSupabaseMain(): Promise<School[]> {
     return _supabaseMainCache.list;
   }
   const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!, { auth: { persistSession: false } });
+  // 메인 페이지는 중학교만 표시 → DB-side filter 로 fetch size ~73% 절감 (13k → ~3.3k).
+  // schools 컬럼도 SchoolTable 사용 필드만 (address/lat/lng/sd_schul_code 제외).
   const [schools, careers] = await Promise.all([
-    fetchAllRows<SchoolRowSB>(sb, "schools"),
+    fetchAllRows<SchoolRowSB>(sb, "schools", SCHOOLS_MAIN_COLUMNS,
+      (q) => q.eq("kind", "중학교")),
     fetchAllRows<CareerRowMainSB>(sb, "careers", CAREERS_MAIN_COLUMNS),
   ]);
 
@@ -232,16 +253,19 @@ export async function loadSchoolById(SHL_IDF_CD: string): Promise<School | null>
   if (!USE_SUPABASE) return loadSchool(SHL_IDF_CD);
 
   const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!, { auth: { persistSession: false } });
+  // schools: 상세 페이지 사용 컬럼만 (lat/lng/sidoCode/si/gu 제외).
+  // careers: male/female/rate_pct JSONB 미사용 → CAREERS_MAIN_COLUMNS 동일 projection.
+  const SCHOOLS_DETAIL_COLUMNS = "shl_idf_cd, school_name, sido_code, sido_name, sd_schul_code, kind, address, sigungu";
   const [schoolRes, careersRes] = await Promise.all([
-    sb.from("schools").select("*").eq("shl_idf_cd", SHL_IDF_CD).maybeSingle(),
-    sb.from("careers").select("*").eq("shl_idf_cd", SHL_IDF_CD),
+    sb.from("schools").select(SCHOOLS_DETAIL_COLUMNS).eq("shl_idf_cd", SHL_IDF_CD).maybeSingle(),
+    sb.from("careers").select(CAREERS_MAIN_COLUMNS).eq("shl_idf_cd", SHL_IDF_CD),
   ]);
 
   if (schoolRes.error) throw new Error(`schools(${SHL_IDF_CD}): ${schoolRes.error.message}`);
   const s = schoolRes.data as SchoolRowSB | null;
   if (!s) return null;
 
-  const careers = (careersRes.error ? [] : (careersRes.data ?? [])) as CareerRowFullSB[];
+  const careers = (careersRes.error ? [] : (careersRes.data ?? [])) as unknown as CareerRowMainSB[];
   if (careersRes.error) console.warn(`[lib/data] careers(${SHL_IDF_CD}): ${careersRes.error.message}`);
 
   const byYear: Record<string, CareerData> = {};
@@ -249,10 +273,11 @@ export async function loadSchoolById(SHL_IDF_CD: string): Promise<School | null>
     const total = totalFromSB(c);
     byYear[String(c.year)] = {
       year: c.year,
-      male: (c.male ?? total) as CareerRow,
-      female: (c.female ?? total) as CareerRow,
+      // male/female/rate_pct 미사용 — total 로 fallback (UI 표시 안 함).
+      male: total,
+      female: total,
       total,
-      ratePct: (c.rate_pct ?? total) as CareerRow,
+      ratePct: total,
       totalGraduatesFromTable: c.graduates,
     };
   }
