@@ -8,12 +8,13 @@
  *   매매: "32.5억\n전용 84㎡ · 2025-04"
  *   전세: "9억\n전용 100㎡ · 2025-04"
  *   월세: "보 1억 / 월 250\n전용 60㎡ · 2025-04"
- * 데이터 없으면 "-".
+ * 데이터 없으면 "최근 N개월 거래 없음" (SYNC_RECENT_MONTHS 기준).
  */
 "use client";
 
 import { useMemo, useState } from "react";
 import type { ApartmentSummary, SaleLatest, JeonseLatest, WolseLatest } from "@/lib/realestate";
+import { SYNC_RECENT_MONTHS } from "@/lib/realestate";
 
 /** 원(₩) → "32.5억" / "9.0억" / "8000만" 표기. */
 function fmtPriceEok(won: number | null): string {
@@ -79,7 +80,7 @@ function sortValue(a: ApartmentSummary, key: SortKey): number | string | null {
 }
 
 function SaleCell({ s }: { s: SaleLatest | null }) {
-  if (!s) return <span className="text-slate-300">-</span>;
+  if (!s) return <span className="text-xs text-slate-400">최근 {SYNC_RECENT_MONTHS}개월 거래 없음</span>;
   return (
     <>
       <div>{fmtPriceEok(s.priceWon)}</div>
@@ -91,7 +92,7 @@ function SaleCell({ s }: { s: SaleLatest | null }) {
 }
 
 function JeonseCell({ j }: { j: JeonseLatest | null }) {
-  if (!j) return <span className="text-slate-300">-</span>;
+  if (!j) return <span className="text-xs text-slate-400">최근 {SYNC_RECENT_MONTHS}개월 거래 없음</span>;
   return (
     <>
       <div>{fmtManWon(j.depositManWon)}</div>
@@ -103,7 +104,7 @@ function JeonseCell({ j }: { j: JeonseLatest | null }) {
 }
 
 function WolseCell({ w }: { w: WolseLatest | null }) {
-  if (!w) return <span className="text-slate-300">-</span>;
+  if (!w) return <span className="text-xs text-slate-400">최근 {SYNC_RECENT_MONTHS}개월 거래 없음</span>;
   return (
     <>
       <div>{fmtManWon(w.depositManWon)} / {w.monthlyRentManWon.toLocaleString()}</div>

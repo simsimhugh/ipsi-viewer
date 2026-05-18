@@ -11,6 +11,13 @@
  */
 import { createClient } from "@supabase/supabase-js";
 
+/**
+ * 부동산 sync 기준 기간 (개월).
+ * scripts/run-realestate-fullcountry.ts 의 --recent default 와 동일.
+ * 변경 시 양쪽 동기화 필요.
+ */
+export const SYNC_RECENT_MONTHS = 12;
+
 // Server Component 전용 — service_role key 우선, anon fallback.
 function getSupabaseClient() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
